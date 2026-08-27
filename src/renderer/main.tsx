@@ -20,7 +20,7 @@ if (!(window as any).electronAPI) {
     getSystemInfo: () => Promise.resolve({ platform: 'linux', arch: 'x64', cpus: 8, totalMemory: 16, freeMemory: 9, hostname: 'dev-pc' }),
     selectDirectory: () => Promise.resolve(null), selectFile: () => Promise.resolve(null), selectFiles: () => Promise.resolve(null),
     openUrl: () => {}, openFolder: () => {},
-    getSettings: () => Promise.resolve({ javaPath: '/usr/lib/jvm/java-17', autoDetectJava: true, minMemory: 512, maxMemory: 4096, jvmArgs: '-XX:+UseG1GC', resolution: { width: 1920, height: 1080 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '/downloads', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '/instances', launcherVersion: '0.1.10', autoStart: false, startMinimized: false, minimizeToTray: false }),
+    getSettings: () => Promise.resolve({ javaPath: '/usr/lib/jvm/java-17', autoDetectJava: true, minMemory: 512, maxMemory: 4096, jvmArgs: '-XX:+UseG1GC', resolution: { width: 1920, height: 1080 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '/downloads', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '/instances', launcherVersion: '0.1.11', autoStart: false, startMinimized: false, minimizeToTray: false }),
     saveSettings: (s: any) => Promise.resolve(s),
     detectJava: () => Promise.resolve([
       { path: '/usr/lib/jvm/java-17/bin/java', version: '17.0.2', majorVersion: 17, architecture: 'x64', vendor: 'Eclipse Adoptium', compatible: true, verified: true },
@@ -76,7 +76,7 @@ if (!(window as any).electronAPI) {
       { id: '2', title: 'Minecraft Live 2025 Announced', date: '2025-08-01T12:00:00Z', summary: 'Join us for the annual Minecraft Live event featuring mob votes and community celebrations.', category: 'Event', imageUrl: '' },
       { id: '3', title: 'Snapshot 25w14craftmine', date: '2025-08-15T12:00:00Z', summary: 'The latest snapshot introduces experimental crafting mechanics and new mineable blocks.', category: 'Snapshot', imageUrl: '' }
     ]),
-    exportDiagnostics: () => Promise.resolve(JSON.stringify({ version: '0.1.10', platform: 'mock' }, null, 2)),
+    exportDiagnostics: () => Promise.resolve(JSON.stringify({ version: '0.1.11', platform: 'mock' }, null, 2)),
     getAutoStart: () => Promise.resolve({ openAtLogin: false }),
     setAutoStart: () => Promise.resolve(),
     showNotification: () => Promise.resolve(),

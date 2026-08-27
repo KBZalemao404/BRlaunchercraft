@@ -126,7 +126,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.10`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.11`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -224,11 +224,11 @@ export class ProcessManager extends EventEmitter {
     const minor = parseInt(match[2])
     const patch = parseInt(match[3] || '0')
     if (major >= 2) return 8 // future major versions
-    if (minor >= 20 && patch >= 5) return 21
-    if (minor >= 20) return 17
-    if (minor >= 18) return 17
-    if (minor >= 17) return 16
-    return 8
+    if (minor >= 21) return 21 // 1.21.x+ always needs Java 21+
+    if (minor === 20 && patch >= 5) return 21 // 1.20.5+ needs Java 21+
+    if (minor >= 18) return 17 // 1.18-1.20.4 needs Java 17+
+    if (minor >= 17) return 16 // 1.17.x needs Java 16+
+    return 8 // 1.16 and below needs Java 8+
   }
 
   private evaluateJvmRules(rules: any[], currentOs: string): boolean {
