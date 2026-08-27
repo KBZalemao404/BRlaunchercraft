@@ -247,7 +247,7 @@ export class VersionManager {
       https.get(url, {
         timeout: 30000,
         headers: {
-          'User-Agent': 'MinecraftLauncher/0.1.11',
+          'User-Agent': 'MinecraftLauncher/0.1.12',
           'Accept-Encoding': 'gzip, deflate'
         }
       }, (res) => {
