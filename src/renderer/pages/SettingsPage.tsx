@@ -5,7 +5,7 @@ import UpdatePanel from '../components/UpdatePanel'
 interface Props { settings: AppSettings | null; systemInfo: SystemInfo | null; onSave: (s: AppSettings) => void; updateState: UpdateState; onCheckUpdate: () => void; onDownloadUpdate: () => void; onInstallUpdate: () => void; onCancelUpdate?: () => void }
 
 export default function SettingsPage({ settings, systemInfo, onSave, updateState, onCheckUpdate, onDownloadUpdate, onInstallUpdate, onCancelUpdate }: Props) {
-  const [form, setForm] = useState<AppSettings>({ javaPath: '', autoDetectJava: true, minMemory: 512, maxMemory: 2048, jvmArgs: '', resolution: { width: 854, height: 480 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '', launcherVersion: '0.1.12', autoStart: false, startMinimized: false, minimizeToTray: false })
+  const [form, setForm] = useState<AppSettings>({ javaPath: '', autoDetectJava: true, minMemory: 512, maxMemory: 2048, jvmArgs: '', resolution: { width: 854, height: 480 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '', launcherVersion: '0.1.13', autoStart: false, startMinimized: false, minimizeToTray: false })
   const [javaInstalls, setJavaInstalls] = useState<JavaInstall[]>([])
   const [detecting, setDetecting] = useState(false)
 

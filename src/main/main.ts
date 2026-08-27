@@ -27,6 +27,18 @@ const downloadManager = new DownloadManager({ maxConcurrent: 4 })
 const javaManager = new JavaManager()
 const versionManager = new VersionManager(downloadManager, storage)
 const instanceManager = new InstanceManager(storage)
+
+// Auto-repair: fix old instances with relative gameDir paths
+try {
+  const basePath = storage.getBasePath()
+  const instances = instanceManager.list()
+  for (const inst of instances) {
+    if (inst.gameDir && !path.isAbsolute(inst.gameDir)) {
+      const fixedDir = path.join(basePath, 'instances', inst.id)
+      instanceManager.update(inst.id, { gameDir: fixedDir })
+    }
+  }
+} catch {}
 const authManager = new AuthManager(path.join(appDataPath, 'auth', 'tokens.dat'))
 const processManager = new ProcessManager(storage, javaManager, instanceManager)
 const modManager = new ModManager(storage, downloadManager, instanceManager)
@@ -45,7 +57,7 @@ function getSettings(): AppSettings {
     verifyFiles: saved.verifyFiles !== 'false', downloadDir: saved.downloadDir || path.join(appDataPath, 'downloads'),
     maxConcurrentDownloads: parseInt(saved.maxConcurrentDownloads) || 4, theme: 'dark',
     language: saved.language || 'pt-BR', gameDir: saved.gameDir || path.join(appDataPath, 'instances'),
-    launcherVersion: '0.1.12',
+    launcherVersion: '0.1.13',
     autoStart: saved.autoStart === 'true',
     startMinimized: saved.startMinimized === 'true',
     minimizeToTray: saved.minimizeToTray === 'true'
@@ -263,7 +275,7 @@ ipcMain.handle('news:fetch', async () => {
 
 // Diagnostics
 ipcMain.handle('diagnostics:export', () => JSON.stringify({
-  version: '0.1.12', timestamp: new Date().toISOString(), platform: process.platform,
+  version: '0.1.13', timestamp: new Date().toISOString(), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, electronVersion: process.versions.electron,
   javaInstalls: javaManager.detectAll().length,
   installedVersions: Object.keys(storage.getInstalledVersions()),

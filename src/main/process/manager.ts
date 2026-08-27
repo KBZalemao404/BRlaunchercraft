@@ -48,6 +48,14 @@ export class ProcessManager extends EventEmitter {
     }
     if (!javaPath) throw new Error('Java não encontrado. Instale Java para jogar.')
 
+    // Auto-repair: if gameDir is relative or missing, fix it
+    if (!path.isAbsolute(instance.gameDir) || !fs.existsSync(instance.gameDir)) {
+      const fixedDir = path.join(this.storage.getBasePath(), 'instances', instance.id)
+      this.instanceManager.update(instance.id, { gameDir: fixedDir })
+      instance.gameDir = fixedDir
+      if (!fs.existsSync(fixedDir)) fs.mkdirSync(fixedDir, { recursive: true })
+    }
+
     // Ensure directories
     const logDir = path.join(instance.gameDir, 'logs')
     const crashDir = path.join(instance.gameDir, 'crash-reports')
@@ -126,7 +134,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.12`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.13`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
