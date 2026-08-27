@@ -1,0 +1,44 @@
+appId: com.minecraft.launcher
+productName: Minecraft Launcher
+copyright: Copyright © 2024 Freebuff
+
+publish:
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - assets/**/*
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Minecraft Launcher
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  artifactName: "MinecraftLauncherSetup-${version}.${ext}"
+
+linux:
+  target:
+    - AppImage
+  icon: assets/icon.png
+  category: Game
+
+mac:
+  target:
+    - dmg
+  icon: assets/icon.icns
+  category: public.app-category.games

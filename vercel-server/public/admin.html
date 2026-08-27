@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Launcher — Admin Panel</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a12;color:#c8c8d8;min-height:100vh}
+    .container{max-width:900px;margin:0 auto;padding:24px}
+    h1{font-size:24px;font-weight:800;margin-bottom:8px;color:#f0f0f8}
+    h2{font-size:16px;font-weight:700;margin:24px 0 12px;color:#f0f0f8}
+    .subtitle{color:#8888a0;font-size:13px;margin-bottom:24px}
+    .card{background:rgba(18,18,30,0.8);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;margin-bottom:16px}
+    input,select,textarea{width:100%;padding:10px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#c8c8d8;font-size:13px;font-family:inherit;outline:none;margin-bottom:10px}
+    input:focus,textarea:focus{border-color:#00e87b}
+    textarea{min-height:80px;resize:vertical}
+    label{display:block;font-size:11px;font-weight:700;color:#8888a0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:inherit;transition:0.2s}
+    .btn-primary{background:linear-gradient(135deg,#00e87b,#00c06b);color:#000;font-weight:700}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,232,123,0.3)}
+    .btn-danger{background:rgba(255,51,102,0.1);color:#ff3366;border-color:rgba(255,51,102,0.2)}
+    .btn-danger:hover{background:#ff3366;color:white}
+    .btn-secondary{background:rgba(255,255,255,0.04);color:#c8c8d8;border-color:rgba(255,255,255,0.08)}
+    .btn-secondary:hover{background:rgba(255,255,255,0.08)}
+    .btn:disabled{opacity:0.4;cursor:not-allowed}
+    .version-list{list-style:none}
+    .version-item{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.04)}
+    .version-item:last-child{border-bottom:none}
+    .version-info h3{font-size:14px;font-weight:700;color:#f0f0f8}
+    .version-info p{font-size:11px;color:#8888a0;margin-top:2px}
+    .badge{display:inline-block;padding:3px 8px;border-radius:99px;font-size:10px;font-weight:700}
+    .badge-published{background:rgba(0,232,123,0.1);color:#00e87b}
+    .badge-draft{background:rgba(255,138,0,0.1);color:#ff8a00}
+    .actions{display:flex;gap:6px}
+    .actions button{padding:6px 12px;font-size:11px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+    .stat{text-align:center;padding:14px;background:rgba(255,255,255,0.02);border-radius:10px;border:1px solid rgba(255,255,255,0.04)}
+    .stat .value{font-size:24px;font-weight:800;color:#00e87b}
+    .stat .label{font-size:10px;color:#8888a0;text-transform:uppercase;margin-top:4px}
+    .login-box{max-width:400px;margin:80px auto}
+    .token-input{display:flex;gap:8px}
+    .token-input input{flex:1;margin-bottom:0}
+    .msg{padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:12px}
+    .msg-success{background:rgba(0,232,123,0.08);color:#00e87b;border:1px solid rgba(0,232,123,0.15)}
+    .msg-error{background:rgba(255,51,102,0.08);color:#ff3366;border:1px solid rgba(255,51,102,0.15)}
+    .empty{text-align:center;padding:40px;color:#555570}
+    .heartbeat{display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(0,232,123,0.05);border:1px solid rgba(0,232,123,0.1);border-radius:8px;font-size:12px;color:#00e87b}
+    .heartbeat-dot{width:8px;height:8px;border-radius:50%;background:#00e87b;animation:pulse 1.5s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Login -->
+    <div id="loginBox" class="login-box">
+      <h1>🔐 Admin Login</h1>
+      <p class="subtitle">Enter your admin token to access the panel.</p>
+      <div class="card">
+        <div class="token-input">
+          <input type="password" id="tokenInput" placeholder="Admin token..." autofocus>
+          <button class="btn btn-primary" onclick="doLogin()">Entrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <h1>⚡ Update Server Admin</h1>
+          <p class="subtitle">Gerenciar versões do Minecraft Launcher</p>
+        </div>
+        <div class="heartbeat" id="heartbeatStatus">
+          <div class="heartbeat-dot"></div>
+          <span>Heartbeat: <span id="heartbeatTime">-</span></span>
+        </div>
+      </div>
+
+      <div class="stats" id="statsGrid">
+        <div class="stat"><div class="value" id="statVersions">0</div><div class="label">Versões</div></div>
+        <div class="stat"><div class="value" id="statDownloads">0</div><div class="label">Downloads</div></div>
+        <div class="stat"><div class="value" id="statClients">0</div><div class="label">Clientes Ativos</div></div>
+        <div class="stat"><div class="value" id="statUptime">-</div><div class="label">Último Heartbeat</div></div>
+      </div>
+
+      <div id="msg"></div>
+
+      <!-- Add Version -->
+      <h2>➕ Nova Versão</h2>
+      <div class="card">
+        <div class="form-row">
+          <div><label>Versão</label><input id="newVersion" placeholder="1.1.0"></div>
+          <div><label>Canal</label><select id="newChannel"><option value="latest">Latest</option><option value="beta">Beta</option><option value="alpha">Alpha</option></select></div>
+        </div>
+        <div><label>URL do Instalador (.exe)</label><input id="newFileUrl" placeholder="https://github.com/.../MinecraftLauncherSetup-1.1.0.exe"></div>
+        <div class="form-row">
+          <div><label>Tamanho (bytes)</label><input id="newFileSize" type="number" placeholder="87000000"></div>
+          <div><label>SHA-512 Hash</label><input id="newFileHash" placeholder="SHA-512 hash..."></div>
+        </div>
+        <div><label>URL do BlockMap</label><input id="newBlockMapUrl" placeholder="https://github.com/.../MinecraftLauncherSetup-1.1.0.exe.blockmap"></div>
+        <div><label>Release Notes</label><textarea id="newReleaseNotes" placeholder="- Bug fixes&#10;- Performance improvements"></textarea></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-primary" onclick="publishVersion()">🚀 Publicar Versão</button>
+          <button class="btn btn-secondary" onclick="saveDraft()">💾 Salvar como Rascunho</button>
+        </div>
+      </div>
+
+      <!-- Version List -->
+      <h2>📦 Versões Publicadas</h2>
+      <div class="card" id="versionsCard">
+        <div class="empty" id="emptyState">Nenhuma versão publicada ainda.</div>
+        <ul class="version-list" id="versionList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin
+    let TOKEN = localStorage.getItem('admin-token') || ''
+
+    async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json', 'X-Admin-Token': TOKEN, ...opts.headers }
+      const res = await fetch(API + path, { ...opts, headers })
+      return res.json()
+    }
+
+    function showMsg(text, type = 'success') {
+      document.getElementById('msg').innerHTML = `<div class="msg msg-${type}">${text}</div>`
+      setTimeout(() => document.getElementById('msg').innerHTML = '', 4000)
+    }
+
+    async function doLogin() {
+      TOKEN = document.getElementById('tokenInput').value.trim()
+      if (!TOKEN) return
+      localStorage.setItem('admin-token', TOKEN)
+      try {
+        const data = await api('/api/admin/stats')
+        if (data.error) { showMsg(data.error, 'error'); return }
+        document.getElementById('loginBox').style.display = 'none'
+        document.getElementById('dashboard').style.display = 'block'
+        renderStats(data)
+        loadVersions()
+      } catch (e) { showMsg('Falha ao conectar', 'error') }
+    }
+
+    async function renderStats(data) {
+      document.getElementById('statVersions').textContent = data.versions?.length || 0
+      document.getElementById('statDownloads').textContent = data.server?.totalDownloads || 0
+      document.getElementById('statClients').textContent = data.server?.activeClients || 0
+      document.getElementById('heartbeatTime').textContent = data.server?.lastHeartbeat ? new Date(data.server.lastHeartbeat).toLocaleTimeString('pt-BR') : '-'
+    }
+
+    async function loadVersions() {
+      const data = await api('/api/versions')
+      const list = document.getElementById('versionList')
+      const empty = document.getElementById('emptyState')
+      if (!data.versions?.length) { list.innerHTML = ''; empty.style.display = 'block'; return }
+      empty.style.display = 'none'
+      list.innerHTML = data.versions.map(v => `
+        <li class="version-item">
+          <div class="version-info">
+            <h3>v${v.version} <span class="badge ${v.published ? 'badge-published' : 'badge-draft'}">${v.published ? 'Publicado' : 'Rascunho'}</span></h3>
+            <p>${v.channel} · ${v.downloads} downloads · ${new Date(v.releaseDate).toLocaleDateString('pt-BR')} · ${(v.fileSize / 1024 / 1024).toFixed(1)} MB</p>
+            ${v.releaseNotes ? `<p style="margin-top:4px;color:#c8c8d8;font-size:11px;white-space:pre-wrap">${v.releaseNotes.substring(0, 200)}</p>` : ''}
+          </div>
+          <div class="actions">
+            <button class="btn btn-secondary" onclick="togglePublish('${v.version}', ${!v.published})">${v.published ? '📥 Ocultar' : '✅ Publicar'}</button>
+            <button class="btn btn-danger" onclick="deleteVersion('${v.version}')">🗑️</button>
+          </div>
+        </li>
+      `).join('')
+    }
+
+    async function publishVersion() {
+      const data = {
+        version: document.getElementById('newVersion').value,
+        channel: document.getElementById('newChannel').value,
+        fileUrl: document.getElementById('newFileUrl').value,
+        fileSize: parseInt(document.getElementById('newFileSize').value) || 0,
+        fileHash: document.getElementById('newFileHash').value,
+        blockMapUrl: document.getElementById('newBlockMapUrl').value,
+        releaseNotes: document.getElementById('newReleaseNotes').value,
+        published: true
+      }
+      if (!data.version || !data.fileUrl) { showMsg('Versão e URL são obrigatórios', 'error'); return }
+      const res = await api('/api/versions', { method: 'POST', body: JSON.stringify(data) })
+      if (res.error) { showMsg(res.error, 'error'); return }
+      showMsg(`✅ Versão ${data.version} publicada!`)
+      document.getElementById('newVersion').value = ''
+      document.getElementById('newFileUrl').value = ''
+      document.getElementById('newFileSize').value = ''
+      document.getElementById('newFileHash').value = ''
+      document.getElementById('newBlockMapUrl').value = ''
+      document.getElementById('newReleaseNotes').value = ''
+      loadVersions()
+    }
+
+    async function saveDraft() {
+      const data = {
+        version: document.getElementById('newVersion').value,
+        channel: document.getElementById('newChannel').value,
+        fileUrl: document.getElementById('newFileUrl').value,
+        fileSize: parseInt(document.getElementById('newFileSize').value) || 0,
+        fileHash: document.getElementById('newFileHash').value,
+        blockMapUrl: document.getElementById('newBlockMapUrl').value,
+        releaseNotes: document.getElementById('newReleaseNotes').value,
+        published: false
+      }
+      if (!data.version || !data.fileUrl) { showMsg('Versão e URL são obrigatórios', 'error'); return }
+      const res = await api('/api/versions', { method: 'POST', body: JSON.stringify(data) })
+      if (res.error) { showMsg(res.error, 'error'); return }
+      showMsg(`💾 Rascunho ${data.version} salvo!`)
+      loadVersions()
+    }
+
+    async function togglePublish(version, publish) {
+      const res = await api('/api/versions', { method: 'PUT', body: JSON.stringify({ version, published: publish }) })
+      if (res.error) { showMsg(res.error, 'error'); return }
+      showMsg(publish ? `✅ v${version} publicado` : `📥 v${version} ocultado`)
+      loadVersions()
+    }
+
+    async function deleteVersion(version) {
+      if (!confirm(`Deletar versão ${version}?`)) return
+      const res = await api(`/api/versions?version=${version}`, { method: 'DELETE' })
+      if (res.error) { showMsg(res.error, 'error'); return }
+      showMsg(`🗑️ v${version} removida`)
+      loadVersions()
+    }
+
+    // Auto-refresh stats every 5s
+    setInterval(async () => {
+      try {
+        const data = await api('/api/admin/stats')
+        if (!data.error) renderStats(data)
+      } catch {}
+    }, 5000)
+
+    // Auto-refresh versions every 10s
+    setInterval(loadVersions, 10000)
+
+    // If token saved, auto-login
+    if (TOKEN) doLogin()
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "minecraft-launcher-update-server",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "ping": "node ping.js"
+  },
+  "dependencies": {
+    "@vercel/kv": "^1.0.0"
+  }
+}

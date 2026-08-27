@@ -1,0 +1,23 @@
+node_modules/
+dist/
+release/
+installer/
+*.tsbuildinfo
+.env
+.env.local
+.vercel/
+.freebuff/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Debug
+npm-debug.log*
+
+# Vercel
+.vercel/
