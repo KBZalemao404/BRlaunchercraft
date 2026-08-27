@@ -2,7 +2,6 @@ import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
 import { MinecraftFolder } from '@xmcl/core'
-import { install } from '@xmcl/installer'
 import { DownloadManager } from '../downloader/manager'
 import { Storage } from '../storage/database'
 import { VersionManifest, InstalledVersion } from '../../shared/types'
@@ -42,15 +41,14 @@ export class VersionManager {
       this.onProgress?.(versionId, { step, percent, message })
     }
 
-    progress('metadata', 0, 'Preparando instalação...')
+    progress('metadata', 0, 'Preparando instalacao...')
 
-    // Try @xmcl/installer first
     try {
-      await install({ id: versionId, url: versionUrl } as any, minecraft)
-      progress('complete', 100, 'Instalação concluída!')
-    } catch {
-      // Fallback to manual install
+      // Use manual install only (avoids @xmcl/installer abort handler crashes)
       await this.manualInstall(versionId, versionUrl, minecraft, progress)
+    } catch (err: any) {
+      progress('error', 0, `Erro na instalacao: ${err.message}`)
+      throw err
     }
 
     // Save installed version info
@@ -99,23 +97,49 @@ export class VersionManager {
       }
     }
 
-    // Download libraries
+    // Download libraries (with error tolerance for platform-specific libs)
     const librariesDir = path.join(versionDir, 'libraries')
     const libraries = versionJson.libraries || []
     let libCount = 0
+    let libErrors = 0
     for (const lib of libraries) {
+      // Handle classifiers (native libraries per platform)
+      if (lib.downloads?.classifiers) {
+        const natives = lib.natives
+        const platformKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-osx' : 'natives-linux'
+        const classifier = lib.downloads.classifiers[platformKey] || lib.downloads.classifiers['natives-' + process.arch]
+        if (classifier) {
+          const libPath = path.join(librariesDir, classifier.path || classifier.url?.split('/').pop() || `native-${lib.name}`)
+          if (!fs.existsSync(libPath)) {
+            const dir = path.dirname(libPath)
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+            try {
+              await this.downloadWithProgress(classifier.url, libPath, classifier.sha1, classifier.size)
+            } catch (e) {
+              libErrors++
+              console.warn(`[versions] Failed to download native lib ${lib.name}: ${(e as Error).message}`)
+            }
+          }
+        }
+      }
+      // Download artifact
       if (lib.downloads?.artifact) {
         const art = lib.downloads.artifact
         const libPath = path.join(librariesDir, art.path || lib.name.replace(/:/g, '/'))
         if (!fs.existsSync(libPath)) {
           const dir = path.dirname(libPath)
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-          await this.downloadWithProgress(art.url, libPath, art.sha1, art.size)
+          try {
+            await this.downloadWithProgress(art.url, libPath, art.sha1, art.size)
+          } catch (e) {
+            libErrors++
+            console.warn(`[versions] Failed to download lib ${lib.name}: ${(e as Error).message}`)
+          }
         }
       }
       libCount++
       if (libCount % 50 === 0 || libCount === libraries.length) {
-        progress('libraries', 35 + Math.round((libCount / Math.max(libraries.length, 1)) * 25), `Libraries... ${libCount}/${libraries.length}`)
+        progress('libraries', 35 + Math.round((libCount / Math.max(libraries.length, 1)) * 25), `Libraries... ${libCount}/${libraries.length}${libErrors > 0 ? ` (${libErrors} erros)` : ''}`)
       }
     }
 
@@ -128,11 +152,14 @@ export class VersionManager {
       if (!fs.existsSync(objectsDir)) fs.mkdirSync(objectsDir, { recursive: true })
 
       const indexFile = path.join(indexesDir, `${versionJson.assetIndex.id}.json`)
-      if (!fs.existsSync(indexFile)) await this.downloadWithProgress(versionJson.assetIndex.url, indexFile)
+      if (!fs.existsSync(indexFile)) {
+        await this.downloadWithProgress(versionJson.assetIndex.url, indexFile)
+      }
 
       const assetIndex = JSON.parse(fs.readFileSync(indexFile, 'utf8'))
       const entries: [string, any][] = Object.entries(assetIndex.objects || {})
       let assetCount = 0
+      let assetErrors = 0
       for (const [name, info] of entries) {
         const prefix = info.hash.substring(0, 2)
         const objDir = path.join(objectsDir, prefix)
@@ -140,16 +167,16 @@ export class VersionManager {
         if (!fs.existsSync(objDir)) fs.mkdirSync(objDir, { recursive: true })
         if (!fs.existsSync(objPath)) {
           const url = `https://resources.download.minecraft.net/${prefix}/${info.hash}`
-          try { await this.downloadWithProgress(url, objPath) } catch {}
+          try { await this.downloadWithProgress(url, objPath) } catch { assetErrors++ }
         }
         assetCount++
         if (assetCount % 200 === 0 || assetCount === entries.length) {
-          progress('assets', 60 + Math.round((assetCount / entries.length) * 30), `Assets... ${assetCount}/${entries.length}`)
+          progress('assets', 60 + Math.round((assetCount / entries.length) * 30), `Assets... ${assetCount}/${entries.length}${assetErrors > 0 ? ` (${assetErrors} erros)` : ''}`)
         }
       }
     }
 
-    progress('complete', 100, 'Instalação concluída!')
+    progress('complete', 100, 'Instalacao concluida!')
   }
 
   async uninstallVersion(versionId: string): Promise<void> {
@@ -185,7 +212,7 @@ export class VersionManager {
 
   private httpGet(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      https.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/1.0' } }, (res) => {
+      https.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.1' } }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume(); this.httpGet(res.headers.location).then(resolve).catch(reject); return
         }
