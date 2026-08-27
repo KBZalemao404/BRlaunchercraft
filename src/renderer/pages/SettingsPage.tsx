@@ -5,7 +5,7 @@ import UpdatePanel from '../components/UpdatePanel'
 interface Props { settings: AppSettings | null; systemInfo: SystemInfo | null; onSave: (s: AppSettings) => void; updateState: UpdateState; onCheckUpdate: () => void; onDownloadUpdate: () => void; onInstallUpdate: () => void }
 
 export default function SettingsPage({ settings, systemInfo, onSave, updateState, onCheckUpdate, onDownloadUpdate, onInstallUpdate }: Props) {
-  const [form, setForm] = useState<AppSettings>({ javaPath: '', autoDetectJava: true, minMemory: 512, maxMemory: 2048, jvmArgs: '', resolution: { width: 854, height: 480 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '', launcherVersion: '0.1.0' })
+  const [form, setForm] = useState<AppSettings>({ javaPath: '', autoDetectJava: true, minMemory: 512, maxMemory: 2048, jvmArgs: '', resolution: { width: 854, height: 480 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '', launcherVersion: '0.1.1', autoStart: false, startMinimized: false, minimizeToTray: false })
   const [javaInstalls, setJavaInstalls] = useState<JavaInstall[]>([])
   const [detecting, setDetecting] = useState(false)
 
@@ -75,9 +75,22 @@ export default function SettingsPage({ settings, systemInfo, onSave, updateState
 
       <div className="section-divider"><div className="section-divider-line" /><span className="section-divider-text">Launcher</span><div className="section-divider-line" /></div>
       <div className="glass-card" style={{ maxWidth: '650px', marginBottom: '24px' }}>
-        {[['closeOnGameStart', 'Fechar launcher ao iniciar o jogo'], ['keepLauncherOpen', 'Manter launcher aberto'], ['showConsole', 'Mostrar console'], ['verifyFiles', 'Verificar arquivos antes de jogar']].map(([k, label]) => (
+        {[['closeOnGameStart', 'Fechar launcher ao iniciar o jogo'], ['keepLauncherOpen', 'Manter launcher aberto'], ['showConsole', 'Mostrar console'], ['verifyFiles', 'Verificar arquivos antes de jogar'], ['minimizeToTray', 'Minimizar para a bandeja ao fechar']].map(([k, label]) => (
           <div key={k} className="form-group"><label className="form-checkbox"><input type="checkbox" checked={(form as any)[k]} onChange={e => setForm({ ...form, [k]: e.target.checked })} /><span>{label}</span></label></div>
         ))}
+        <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,232,123,0.04)', borderRadius: '8px', border: '1px solid rgba(0,232,123,0.1)' }}>
+          <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '10px', color: 'var(--accent)' }}>🚀 Inicialização</div>
+          <div className="form-group"><label className="form-checkbox"><input type="checkbox" checked={form.autoStart} onChange={e => {
+            const checked = e.target.checked
+            setForm({ ...form, autoStart: checked })
+            window.electronAPI?.setAutoStart?.(checked, form.startMinimized)
+          }} /><span>Iniciar automaticamente com o Windows</span></label></div>
+          <div className="form-group"><label className="form-checkbox"><input type="checkbox" checked={form.startMinimized} onChange={e => {
+            const checked = e.target.checked
+            setForm({ ...form, startMinimized: checked })
+            window.electronAPI?.setAutoStart?.(form.autoStart, checked)
+          }} disabled={!form.autoStart} /><span>Iniciar minimizado na bandeja{form.autoStart ? '' : ' (requer auto-start)'}</span></label></div>
+        </div>
         <div className="form-group"><label className="form-label">Downloads simultâneos: {form.maxConcurrentDownloads}</label><input type="range" className="form-range" min={1} max={16} value={form.maxConcurrentDownloads} onChange={e => setForm({ ...form, maxConcurrentDownloads: parseInt(e.target.value) })} /></div>
       </div>
 

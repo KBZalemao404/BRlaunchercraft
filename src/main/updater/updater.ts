@@ -1,14 +1,11 @@
-import { autoUpdater, UpdateInfo as ElectronUpdateInfo } from 'electron-updater'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, shell } from 'electron'
 import Logger from '../logger/logger'
 import { app } from 'electron'
-import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 
-// ── Vercel Update Server Integration ──
 const UPDATE_SERVER_URL = process.env.UPDATE_SERVER_URL || 'https://minecraft-launcher-updates.vercel.app'
-const HEARTBEAT_INTERVAL = 1_000 // 1 second
+const HEARTBEAT_INTERVAL = 1_000
 
 export interface UpdateProgress {
   percent: number
@@ -21,7 +18,7 @@ export type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' |
 
 export interface UpdateState {
   status: UpdateStatus
-  info?: { version: string; releaseDate: string; releaseNotes?: string }
+  info?: { version: string; releaseDate: string; releaseNotes?: string; fileUrl?: string }
   progress?: UpdateProgress
   error?: string
   currentVersion: string
@@ -36,74 +33,11 @@ export class LauncherUpdater {
 
   constructor(logger: Logger) {
     this.logger = logger
-    this.state = {
-      status: 'idle',
-      currentVersion: app.getVersion()
-    }
-
-    // Configure auto-updater
-    autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = true
-    autoUpdater.allowDowngrade = false
-
-    this.setupListeners()
+    this.state = { status: 'idle', currentVersion: app.getVersion() }
   }
 
   setMainWindow(win: BrowserWindow) {
     this.mainWindow = win
-  }
-
-  private setupListeners() {
-    autoUpdater.on('checking-for-update', () => {
-      this.logger.info('updater', 'Verificando atualizações...')
-      this.updateState({ status: 'checking' })
-    })
-
-    autoUpdater.on('update-available', (info: ElectronUpdateInfo) => {
-      this.logger.info('updater', `Atualização disponível: v${info.version}`)
-      this.updateState({
-        status: 'available',
-        info: {
-          version: info.version,
-          releaseDate: info.releaseDate,
-          releaseNotes: info.releaseNotes as string || undefined
-        }
-      })
-    })
-
-    autoUpdater.on('update-not-available', () => {
-      this.logger.info('updater', 'Nenhuma atualização disponível')
-      this.updateState({ status: 'not-available' })
-    })
-
-    autoUpdater.on('download-progress', (progress) => {
-      this.updateState({
-        status: 'downloading',
-        progress: {
-          percent: Math.round(progress.percent),
-          transferred: progress.transferred,
-          total: progress.total,
-          bytesPerSecond: progress.bytesPerSecond
-        }
-      })
-    })
-
-    autoUpdater.on('update-downloaded', (info: ElectronUpdateInfo) => {
-      this.logger.info('updater', `Atualização baixada: v${info.version}`)
-      this.updateState({
-        status: 'downloaded',
-        info: {
-          version: info.version,
-          releaseDate: info.releaseDate,
-          releaseNotes: info.releaseNotes as string || undefined
-        }
-      })
-    })
-
-    autoUpdater.on('error', (err) => {
-      this.logger.error('updater', `Erro no updater: ${err.message}`)
-      this.updateState({ status: 'error', error: err.message })
-    })
   }
 
   private updateState(partial: Partial<UpdateState>) {
@@ -117,59 +51,100 @@ export class LauncherUpdater {
     return { ...this.state }
   }
 
-  async checkForUpdates(): Promise<UpdateState> {
+  // ── Update Check (Vercel Server) ──
+
+  async checkForUpdatesViaServer(): Promise<UpdateState> {
     try {
       this.updateState({ status: 'checking' })
-      const result = await autoUpdater.checkForUpdates()
-      if (!result) {
+      const url = `${UPDATE_SERVER_URL}/api/update?current=${app.getVersion()}&channel=latest`
+      const data = await this.httpGet(url)
+      const result = JSON.parse(data)
+
+      if (result.updateAvailable) {
+        this.logger.info('updater', `Update v${result.version} available!`)
+        this.updateState({
+          status: 'available',
+          info: {
+            version: result.version,
+            releaseDate: result.releaseDate,
+            releaseNotes: result.releaseNotes,
+            fileUrl: result.fileUrl
+          }
+        })
+      } else {
+        this.logger.info('updater', 'No update available')
         this.updateState({ status: 'not-available' })
       }
       return this.state
     } catch (err: any) {
-      this.logger.error('updater', `Falha ao verificar: ${err.message}`)
-      this.updateState({ status: 'error', error: err.message })
+      this.logger.error('updater', `Server check failed: ${err.message}`)
+      this.updateState({ status: 'error', error: `Servidor indisponível: ${err.message}` })
       return this.state
     }
   }
 
+  // ── Download & Install ──
+
   async downloadUpdate(): Promise<void> {
-    if (this.state.status !== 'available') {
-      throw new Error('Nenhuma atualização disponível para baixar')
+    if (!this.state.info?.fileUrl) {
+      throw new Error('Nenhuma URL de download disponível')
     }
-    try {
-      await autoUpdater.downloadUpdate()
-    } catch (err: any) {
-      this.logger.error('updater', `Falha ao baixar: ${err.message}`)
-      this.updateState({ status: 'error', error: err.message })
-      throw err
-    }
+    this.updateState({ status: 'downloading', progress: { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 } })
+
+    // Track download on server
+    this.reportDownload(this.state.info.version)
+
+    // Open download URL in default browser
+    this.logger.info('updater', `Opening download: ${this.state.info.fileUrl}`)
+    await shell.openExternal(this.state.info.fileUrl)
+
+    // Mark as downloaded (user will install manually from browser download)
+    this.updateState({ status: 'downloaded' })
   }
 
   async installUpdate(): Promise<void> {
-    if (this.state.status !== 'downloaded') {
-      throw new Error('Nenhuma atualização baixada para instalar')
-    }
-    this.logger.info('updater', 'Instalando atualização e reiniciando...')
-    autoUpdater.quitAndInstall(false, true)
+    if (!this.state.info?.fileUrl) return
+    // Re-open the download URL
+    await shell.openExternal(this.state.info.fileUrl)
   }
+
+  // ── Auto Check ──
 
   startAutoCheck(intervalMs = 30 * 60 * 1000) {
     this.stopAutoCheck()
-    // Check 30 seconds after app starts
-    setTimeout(() => {
-      this.checkForUpdates().catch(() => {})
-    }, 30_000)
-    // Then check every intervalMs
-    this.updateCheckInterval = setInterval(() => {
-      this.checkForUpdates().catch(() => {})
-    }, intervalMs)
+    setTimeout(() => { this.checkForUpdatesViaServer().catch(() => {}) }, 30_000)
+    this.updateCheckInterval = setInterval(() => { this.checkForUpdatesViaServer().catch(() => {}) }, intervalMs)
   }
 
   stopAutoCheck() {
-    if (this.updateCheckInterval) {
-      clearInterval(this.updateCheckInterval)
-      this.updateCheckInterval = null
+    if (this.updateCheckInterval) { clearInterval(this.updateCheckInterval); this.updateCheckInterval = null }
+  }
+
+  // ── Heartbeat (keep server alive) ──
+
+  startHeartbeat(intervalMs = HEARTBEAT_INTERVAL) {
+    this.stopHeartbeat()
+    const send = async () => {
+      try {
+        const url = `${UPDATE_SERVER_URL}/api/heartbeat`
+        const body = JSON.stringify({ version: app.getVersion(), platform: process.platform })
+        const parsedUrl = new URL(url)
+        const client = parsedUrl.protocol === 'https:' ? https : http
+        const req = client.request(parsedUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body).toString() }
+        })
+        req.on('error', () => {})
+        req.write(body)
+        req.end()
+      } catch {}
     }
+    setTimeout(send, 2_000)
+    this.heartbeatInterval = setInterval(send, intervalMs)
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = null }
   }
 
   destroy() {
@@ -178,100 +153,25 @@ export class LauncherUpdater {
     this.mainWindow = null
   }
 
-  // ── Vercel Server Integration ──
+  // ── Server Reporting ──
 
-  /**
-   * Send heartbeat to the update server every 1 second.
-   * This keeps the Vercel server warm and reports client status.
-   */
-  startHeartbeat(intervalMs = HEARTBEAT_INTERVAL) {
-    this.stopHeartbeat()
-
-    const sendHeartbeat = async () => {
-      try {
-        const url = `${UPDATE_SERVER_URL}/api/heartbeat`
-        const body = JSON.stringify({
-          version: app.getVersion(),
-          platform: process.platform
-        })
-
-        const parsedUrl = new URL(url)
-        const client = parsedUrl.protocol === 'https:' ? https : http
-
-        const req = client.request(parsedUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-        })
-
-        req.on('response', (res) => {
-          let data = ''
-          res.on('data', (chunk) => data += chunk)
-          res.on('end', () => {
-            try {
-              const response = JSON.parse(data)
-              this.logger.debug('heartbeat', `Server: ${response.activeClients} clients, latest: v${response.latestVersion || '?'}`)
-            } catch {}
-          })
-        })
-
-        req.on('error', () => {}) // silently ignore heartbeat errors
-        req.write(body)
-        req.end()
-      } catch {}
-    }
-
-    // Send first heartbeat after 2 seconds
-    setTimeout(sendHeartbeat, 2_000)
-    this.heartbeatInterval = setInterval(sendHeartbeat, intervalMs)
-  }
-
-  stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval)
-      this.heartbeatInterval = null
-    }
-  }
-
-  /**
-   * Check for updates via the Vercel server (faster than GitHub releases).
-   */
-  async checkForUpdatesViaServer(): Promise<UpdateState> {
+  async reportDownload(version: string): Promise<void> {
     try {
-      this.updateState({ status: 'checking' })
-
-      const url = `${UPDATE_SERVER_URL}/api/update?current=${app.getVersion()}&channel=latest`
-      const data = await this.httpGet(url)
-      const result = JSON.parse(data)
-
-      if (result.updateAvailable) {
-        this.logger.info('updater', `Vercel server: update v${result.version} available!`)
-        this.updateState({
-          status: 'available',
-          info: {
-            version: result.version,
-            releaseDate: result.releaseDate,
-            releaseNotes: result.releaseNotes
-          }
-        })
-
-        // Store the download URL for later
-        this._pendingDownloadUrl = result.fileUrl
-        this._pendingBlockMapUrl = result.blockMapUrl
-      } else {
-        this.logger.info('updater', 'Vercel server: no update available')
-        this.updateState({ status: 'not-available' })
-      }
-
-      return this.state
-    } catch (err: any) {
-      this.logger.error('updater', `Vercel server check failed: ${err.message}`)
-      this.updateState({ status: 'error', error: `Servidor indisponível: ${err.message}` })
-      return this.state
-    }
+      const url = `${UPDATE_SERVER_URL}/api/download`
+      const body = JSON.stringify({ version })
+      const parsedUrl = new URL(url)
+      const client = parsedUrl.protocol === 'https:' ? https : http
+      const req = client.request(parsedUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body).toString() }
+      })
+      req.on('error', () => {})
+      req.write(body)
+      req.end()
+    } catch {}
   }
 
-  private _pendingDownloadUrl: string | null = null
-  private _pendingBlockMapUrl: string | null = null
+  // ── HTTP Helper ──
 
   private httpGet(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -288,25 +188,5 @@ export class LauncherUpdater {
         res.on('end', () => resolve(data))
       }).on('error', reject)
     })
-  }
-
-  /**
-   * Report download to the Vercel server for tracking.
-   */
-  async reportDownload(version: string): Promise<void> {
-    try {
-      const url = `${UPDATE_SERVER_URL}/api/download`
-      const body = JSON.stringify({ version })
-      const parsedUrl = new URL(url)
-      const client = parsedUrl.protocol === 'https:' ? https : http
-
-      const req = client.request(parsedUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-      })
-      req.on('error', () => {})
-      req.write(body)
-      req.end()
-    } catch {}
   }
 }

@@ -76,12 +76,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onGameLog: (cb: Function) => ipcRenderer.on('game-log', (_, d) => cb(d)),
   onLauncherLog: (cb: Function) => ipcRenderer.on('launcher-log', (_, d) => cb(d)),
 
+  // Auto-start & System
+  getAutoStart: () => ipcRenderer.invoke('autostart:get'),
+  setAutoStart: (enabled: boolean, startMinimized: boolean) => ipcRenderer.invoke('autostart:set', enabled, startMinimized),
+  showNotification: (title: string, body: string) => ipcRenderer.invoke('tray:show-notification', title, body),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
+  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+
   // Updater
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   getUpdateState: () => ipcRenderer.invoke('update:state'),
   onUpdateState: (cb: Function) => ipcRenderer.on('update:state', (_, d) => cb(d)),
+
+  // Profiles
+  listProfiles: () => ipcRenderer.invoke('profiles:list'),
+  getProfile: (id: string) => ipcRenderer.invoke('profiles:get', id),
+  getActiveProfile: () => ipcRenderer.invoke('profiles:get-active'),
+  createProfile: (d: any) => ipcRenderer.invoke('profiles:create', d),
+  updateProfile: (id: string, u: any) => ipcRenderer.invoke('profiles:update', id, u),
+  deleteProfile: (id: string) => ipcRenderer.invoke('profiles:delete', id),
+  setActiveProfile: (id: string) => ipcRenderer.invoke('profiles:set-active', id),
+  addSkinFromUrl: (d: any) => ipcRenderer.invoke('profiles:add-skin-url', d),
+  addSkinFromFile: (d: any) => ipcRenderer.invoke('profiles:add-skin-file', d),
+  deleteSkin: (id: string) => ipcRenderer.invoke('profiles:delete-skin', id),
+  applySkin: (d: any) => ipcRenderer.invoke('profiles:apply-skin', d),
+  getSkins: () => ipcRenderer.invoke('profiles:get-skins'),
+  getAvatarUrl: (uuid: string) => ipcRenderer.invoke('profiles:avatar', uuid),
+  onProfileSwitched: (cb: Function) => ipcRenderer.on('profile-switched', (_, d) => cb(d)),
 
   // News
   fetchNews: () => ipcRenderer.invoke('news:fetch'),

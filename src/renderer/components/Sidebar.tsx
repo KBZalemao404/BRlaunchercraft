@@ -11,6 +11,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
     { page: 'downloads', icon: '⬇️', label: 'Downloads' },
     { page: 'console', icon: '📋', label: 'Logs' },
     { page: 'settings', icon: '⚙️', label: 'Configurações' },
+    { page: 'profile', icon: '👤', label: 'Perfis' },
   ]
   const accountItems: { page: Page; icon: string; label: string }[] = [
     { page: 'login', icon: account ? '👤' : '🔐', label: account ? 'Conta' : 'Login' },
@@ -46,7 +47,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
           </button>
         ))}
       </nav>
-      <div className="sidebar-footer">v{currentVersion || '0.1.0'}</div>
+      <div className="sidebar-footer">v{currentVersion || '0.1.1'}</div>
     </div>
   )
 }

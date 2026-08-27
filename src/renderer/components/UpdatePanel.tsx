@@ -165,7 +165,7 @@ export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: P
           </button>
         )}
 
-        <button className="btn btn-secondary btn-sm" onClick={() => window.electronAPI?.openUrl?.('https://github.com/Freebuff/minecraft-launcher/blob/main/CHANGELOG.md')} style={{ marginLeft: 'auto' }}>
+        <button className="btn btn-secondary btn-sm" onClick={() => window.electronAPI?.openUrl?.('https://github.com/KBZalemao404/BRlaunchercraft/blob/main/CHANGELOG.md')} style={{ marginLeft: 'auto' }}>
           📋 Ver Changelog
         </button>
       </div>

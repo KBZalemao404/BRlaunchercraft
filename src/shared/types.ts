@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 
 // ── Navigation ──
-export type Page = 'home' | 'login' | 'versions' | 'instances' | 'mods' | 'downloads' | 'console' | 'settings' | 'news'
+export type Page = 'home' | 'login' | 'versions' | 'instances' | 'mods' | 'downloads' | 'console' | 'settings' | 'news' | 'profile'
 
 // ── Authentication ──
 export interface AuthAccount {
@@ -153,6 +153,9 @@ export interface AppSettings {
   language: string
   gameDir: string
   launcherVersion: string
+  autoStart: boolean
+  startMinimized: boolean
+  minimizeToTray: boolean
 }
 
 // ── System ──
@@ -198,6 +201,42 @@ export interface UpdateState {
   progress?: UpdateProgress
   error?: string
   currentVersion: string
+}
+
+// ── Profile ──
+export interface UserProfile {
+  id: string
+  username: string
+  uuid: string
+  type: 'microsoft' | 'offline'
+  skinUrl?: string
+  skinModel?: 'classic' | 'slim'
+  capeUrl?: string
+  createdAt: string
+  lastUsedAt: string
+  playTime: number       // total minutes
+  gamesPlayed: number
+  isFavorite: boolean
+  accessToken?: string
+  refreshToken?: string
+  expiresAt?: number
+}
+
+export interface SkinInfo {
+  id: string
+  name: string
+  url: string
+  model: 'classic' | 'slim'
+  source: 'url' | 'file' | 'library'
+  addedAt: string
+  preview?: string  // base64 data URL for preview
+}
+
+export interface ProfileStats {
+  totalPlayTime: number
+  gamesPlayed: number
+  favoriteInstance?: string
+  lastGame?: string
 }
 
 // ── World ──

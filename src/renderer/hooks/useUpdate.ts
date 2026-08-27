@@ -3,7 +3,7 @@ import type { UpdateState } from '../../shared/types'
 
 const defaultState: UpdateState = {
   status: 'idle',
-  currentVersion: '0.1.0'
+  currentVersion: '0.1.1'
 }
 
 export function useUpdate() {

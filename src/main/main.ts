@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -12,9 +12,12 @@ import { AuthManager } from './auth/manager'
 import { ProcessManager } from './process/manager'
 import { ModManager } from './mods/manager'
 import { LauncherUpdater } from './updater'
+import { ProfileManager } from './profiles/manager'
 import { AppSettings, SystemInfo } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
 const appDataPath = app.getPath('userData')
 
 // Initialize services
@@ -28,6 +31,7 @@ const authManager = new AuthManager(path.join(appDataPath, 'auth', 'tokens.dat')
 const processManager = new ProcessManager(storage, javaManager, instanceManager)
 const modManager = new ModManager(storage, downloadManager, instanceManager)
 const updater = new LauncherUpdater(logger)
+const profileManager = new ProfileManager(appDataPath)
 
 // Default settings
 function getSettings(): AppSettings {
@@ -41,7 +45,10 @@ function getSettings(): AppSettings {
     verifyFiles: saved.verifyFiles !== 'false', downloadDir: saved.downloadDir || path.join(appDataPath, 'downloads'),
     maxConcurrentDownloads: parseInt(saved.maxConcurrentDownloads) || 4, theme: 'dark',
     language: saved.language || 'pt-BR', gameDir: saved.gameDir || path.join(appDataPath, 'instances'),
-    launcherVersion: '0.1.0'
+    launcherVersion: '0.1.1',
+    autoStart: saved.autoStart === 'true',
+    startMinimized: saved.startMinimized === 'true',
+    minimizeToTray: saved.minimizeToTray === 'true'
   }
 }
 
@@ -54,13 +61,42 @@ function saveSettings(s: AppSettings): void {
     ['keepLauncherOpen', String(s.keepLauncherOpen)], ['showConsole', String(s.showConsole)],
     ['verifyFiles', String(s.verifyFiles)], ['downloadDir', s.downloadDir],
     ['maxConcurrentDownloads', String(s.maxConcurrentDownloads)], ['language', s.language],
-    ['gameDir', s.gameDir]
+    ['gameDir', s.gameDir],
+    ['autoStart', String(s.autoStart)],
+    ['startMinimized', String(s.startMinimized)],
+    ['minimizeToTray', String(s.minimizeToTray)]
   ]
   for (const [k, v] of entries) storage.setSetting(k, v)
 }
 
 function sendToRenderer(channel: string, data?: any) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data ?? null)
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, '../../assets/icon.png')
+  try {
+    const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+    tray = new Tray(icon)
+    tray.setToolTip('Minecraft Launcher')
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) { mainWindow.focus() } else { mainWindow.show(); mainWindow.setSkipTaskbar(false) }
+      }
+    })
+    updateTrayMenu()
+  } catch {}
+}
+
+function updateTrayMenu() {
+  if (!tray) return
+  const menu = Menu.buildFromTemplate([
+    { label: 'Minecraft Launcher', enabled: false },
+    { type: 'separator' },
+    { label: 'Abrir Launcher', click: () => { mainWindow?.show(); mainWindow?.setSkipTaskbar(false) } },
+    { label: 'Fechar launcher', click: () => { isQuitting = true; app.quit() } }
+  ])
+  tray.setContextMenu(menu)
 }
 
 function createWindow() {
@@ -70,7 +106,14 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
     icon: path.join(__dirname, '../../assets/icon.png'), show: false
   })
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => {
+    // Start minimized if auto-started
+    const settings = getSettings()
+    const wasAutoStarted = process.argv.includes('--hidden') || process.argv.includes('--minimized')
+    if (!wasAutoStarted || !settings.startMinimized) {
+      mainWindow?.show()
+    }
+  })
   if (process.env.ELECTRON_DEV) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
@@ -78,6 +121,15 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
   updater.setMainWindow(mainWindow)
+  mainWindow.on('close', (e) => {
+    const settings = getSettings()
+    if (!isQuitting && settings.minimizeToTray) {
+      e.preventDefault()
+      mainWindow?.hide()
+      mainWindow?.setSkipTaskbar(true)
+      return
+    }
+  })
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
@@ -177,6 +229,22 @@ processManager.on('game-error', (d) => sendToRenderer('game-error', d))
 processManager.on('game-log', (d) => sendToRenderer('game-log', d))
 processManager.on('log', (d) => sendToRenderer('launcher-log', d))
 
+// Profiles
+ipcMain.handle('profiles:list', () => profileManager.list())
+ipcMain.handle('profiles:get', (_, id) => profileManager.get(id))
+ipcMain.handle('profiles:get-active', () => profileManager.getActive())
+ipcMain.handle('profiles:create', (_, data) => profileManager.create(data))
+ipcMain.handle('profiles:update', (_, id, updates) => profileManager.update(id, updates))
+ipcMain.handle('profiles:delete', (_, id) => profileManager.delete(id))
+ipcMain.handle('profiles:set-active', (_, id) => profileManager.setActive(id))
+ipcMain.handle('profiles:add-skin-url', async (_, { name, url, model }) => await profileManager.addSkinFromUrl(name, url, model))
+ipcMain.handle('profiles:add-skin-file', (_, { name, filePath, model }) => profileManager.addSkinFromFile(name, filePath, model))
+ipcMain.handle('profiles:delete-skin', (_, id) => profileManager.deleteSkin(id))
+ipcMain.handle('profiles:apply-skin', (_, { profileId, skinId }) => profileManager.applySkinToProfile(profileId, skinId))
+ipcMain.handle('profiles:get-skins', () => profileManager.getSkins())
+ipcMain.handle('profiles:avatar', (_, uuid) => profileManager.getAvatarUrl(uuid))
+profileManager.on('profile-switched', (p) => sendToRenderer('profile-switched', p))
+
 // News
 ipcMain.handle('news:fetch', async () => {
   try {
@@ -195,7 +263,7 @@ ipcMain.handle('news:fetch', async () => {
 
 // Diagnostics
 ipcMain.handle('diagnostics:export', () => JSON.stringify({
-  version: '0.1.0', timestamp: new Date().toISOString(), platform: process.platform,
+  version: '0.1.1', timestamp: new Date().toISOString(), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, electronVersion: process.versions.electron,
   javaInstalls: javaManager.detectAll().length,
   installedVersions: Object.keys(storage.getInstalledVersions()),
@@ -214,24 +282,74 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:install', () => {
   updater.installUpdate()
 })
-ipcMain.handle('update:state', () => updater.getState())
+ipcMain.handle('  update:state', () => updater.getState())
 // Updater state is already forwarded via sendToRenderer inside the updater class
+
+// ═══════ AUTO-START / SYSTEM TRAY ═══════
+ipcMain.handle('autostart:get', () => {
+  return app.getLoginItemSettings()
+})
+ipcMain.handle('autostart:set', (_, enabled: boolean, startMinimized: boolean) => {
+  const launchArgs = startMinimized ? ['--minimized'] : []
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    openAsHidden: startMinimized,
+    args: launchArgs
+  })
+  logger.info('main', `Auto-start ${enabled ? 'enabled' : 'disabled'} (minimized: ${startMinimized})`)
+})
+ipcMain.handle('tray:show-notification', (_, title: string, body: string) => {
+  tray?.displayBalloon({ title, content: body })
+})
+ipcMain.handle('app:quit', () => {
+  isQuitting = true
+  app.quit()
+})
+ipcMain.handle('app:relaunch', () => {
+  isQuitting = true
+  app.relaunch()
+  app.quit()
+})
 
 // ═══════ APP LIFECYCLE ═══════
 
-app.whenReady().then(() => {
-  javaManager.detectAll()
-  logger.info('main', `Launcher started on ${process.platform} ${process.arch}`)
-  createWindow()
-  updater.startAutoCheck()
-  updater.startHeartbeat()
-})
+// Ensure single instance
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    javaManager.detectAll()
+    logger.info('main', `Launcher started on ${process.platform} ${process.arch}`)
+    createTray()
+    createWindow()
+    updater.startAutoCheck()
+    updater.startHeartbeat()
+    // Sync auto-start setting with OS
+    const settings = getSettings()
+    if (settings.autoStart) {
+      app.setLoginItemSettings({ openAtLogin: true, openAsHidden: settings.startMinimized, args: settings.startMinimized ? ['--minimized'] : [] })
+    }
+  })
+}
+
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 app.on('before-quit', () => {
+  isQuitting = true
   for (const [id] of processManager['processes']) processManager.stop(id)
   logger.info('main', 'Launcher shutting down')
   updater.stopHeartbeat()
   updater.destroy()
   storage.close()
+  tray?.destroy()
+  tray = null
 })

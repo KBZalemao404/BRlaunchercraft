@@ -6,6 +6,41 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.1.1] — 2026-08-27
+
+### 🚀 Lançamento (Alpha) — Correções + Auto-Start
+
+### ✅ Funcionalidades Adicionadas
+- **Auto-Start no Windows** — Iniciar launcher automaticamente com o Windows
+- **Start Minimized** — Iniciar minimizado na bandeja do sistema
+- **Minimize to Tray** — Minimizar para a bandeja ao fechar (em vez de fechar)
+- **System Tray** — Ícone na bandeja com menu de contexto (Abrir / Fechar)
+- **Single Instance Lock** — Impede múltiplas instâncias do launcher
+- **Profile Manager** — Sistema completo de perfis com skins e estatísticas
+- **Skin Manager** — Upload por URL ou arquivo, preview, modelo Classic/Slim
+
+### 🔧 Correções de Erros
+- **404 GitHub releases.atom** — Removido completamente o fallback do GitHub updater
+- Updater agora usa **apenas** o servidor Vercel (zero referências ao GitHub)
+- `electron-updater` removido das dependências (não mais necessário)
+- `autoUpdater.checkForUpdates()` substituído por `checkForUpdatesViaServer()`
+- Link do Changelog apontando para repositório correto (KBZalemao404/BRlaunchercraft)
+
+### ⚡ Melhorias
+- SettingsPage com seção de Inicialização (auto-start, start minimized)
+- SettingsPage com toggle minimizeToTray na seção Launcher
+- Verificação de `process.argv` para detectar auto-start (`--minimized`)
+- Menu de contexto no tray com "Abrir Launcher" e "Fechar launcher"
+- `app.requestSingleInstanceLock()` para prevenir instâncias duplicadas
+- Rebuild completo sem cache — dist/ verificado sem referências GitHub
+
+### 📦 Infraestrutura
+- Versão unificada `0.1.1` em todos os 16 arquivos do projeto
+- Atualização do CHANGELOG
+- Novo instalador gerado
+
+---
+
 ## [0.1.0] — 2026-08-26
 
 ### 🚀 Lançamento Oficial (Alpha)

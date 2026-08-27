@@ -1,6 +1,6 @@
 {
   "name": "minecraft-launcher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Minecraft Java Edition Launcher",
   "main": "dist/main/main.js",
   "author": "Freebuff",
@@ -19,8 +19,7 @@
   "dependencies": {
     "@xmcl/core": "^2.14.0",
     "@xmcl/installer": "^4.2.0",
-    "better-sqlite3": "^11.0.0",
-    "electron-updater": "^6.8.9"
+    "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
@@ -48,7 +47,6 @@
       "dist/**/*",
       "assets/**/*"
     ],
-
     "win": {
       "target": [
         {

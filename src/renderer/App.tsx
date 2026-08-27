@@ -16,6 +16,7 @@ import ModsPage from './pages/ModsPage'
 import DownloadsPage from './pages/DownloadsPage'
 import ConsolePage from './pages/ConsolePage'
 import SettingsPage from './pages/SettingsPage'
+import ProfilePage from './pages/ProfilePage'
 import UpdateBanner from './components/UpdateBanner'
 import SplashScreen from './components/SplashScreen'
 
@@ -29,6 +30,8 @@ export default function App() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null)
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
   const [gameRunning, setGameRunning] = useState<Record<string, boolean>>({})
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,13 +46,15 @@ export default function App() {
 
   const init = async () => {
     try {
-      const [acc, insts, vers, sys, sets] = await Promise.all([
+      const [acc, insts, vers, sys, sets, profs, activeProf] = await Promise.all([
         window.electronAPI?.getAccount(), window.electronAPI?.listInstances(),
         window.electronAPI?.getInstalledVersions(), window.electronAPI?.getSystemInfo(),
-        window.electronAPI?.getSettings()
+        window.electronAPI?.getSettings(), window.electronAPI?.listProfiles?.(),
+        window.electronAPI?.getActiveProfile?.()
       ])
       setAccount(acc); setInstances(insts || []); setInstalledVersions(vers || {})
-      setSystemInfo(sys); setSettings(sets)
+      setSystemInfo(sys); setSettings(sets); setProfiles(profs || [])
+      if (activeProf) setActiveProfileId(activeProf.id)
       if (insts?.length > 0) setSelectedInstanceId(insts[0].id)
       setupListeners()
     } catch (e) { console.error('Init error:', e) } finally { setLoading(false) }
@@ -93,6 +98,15 @@ export default function App() {
   }
   const handleSaveSettings = async (s: AppSettings) => { try { await window.electronAPI?.saveSettings(s); setSettings(s); showToast('Configurações salvas!', 'success') } catch (e: any) { showToast(`Erro: ${e.message}`, 'error') } }
 
+  const reloadProfiles = async () => {
+    const [profs, activeProf] = await Promise.all([window.electronAPI?.listProfiles?.(), window.electronAPI?.getActiveProfile?.()])
+    setProfiles(profs || []); if (activeProf) setActiveProfileId(activeProf.id)
+  }
+
+  const handleSwitchProfile = async (id: string) => { try { await window.electronAPI?.setActiveProfile?.(id); await reloadProfiles(); showToast('Perfil alterado!', 'success') } catch (e: any) { showToast(e.message, 'error') } }
+  const handleCreateProfile = async (d: any) => { try { await window.electronAPI?.createProfile?.(d); await reloadProfiles(); showToast('Perfil criado!', 'success') } catch (e: any) { showToast(e.message, 'error') } }
+  const handleDeleteProfile = async (id: string) => { try { await window.electronAPI?.deleteProfile?.(id); await reloadProfiles(); showToast('Perfil removido', 'success') } catch (e: any) { showToast(e.message, 'error') } }
+
   const renderPage = () => {
     switch (page) {
       case 'home': return <HomePage account={account} instances={instances} installedVersions={installedVersions} selectedInstanceId={selectedInstanceId} onSelectInstance={setSelectedInstanceId} onNavigate={nav} onLaunch={handleLaunch} gameRunning={gameRunning} />
@@ -103,6 +117,7 @@ export default function App() {
       case 'downloads': return <DownloadsPage />
       case 'console': return <ConsolePage logs={logs} />
       case 'settings': return <SettingsPage settings={settings} systemInfo={systemInfo} onSave={handleSaveSettings} updateState={update.state} onCheckUpdate={update.checkForUpdates} onDownloadUpdate={update.downloadUpdate} onInstallUpdate={update.installUpdate} />
+      case 'profile': return <ProfilePage profiles={profiles} activeProfileId={activeProfileId} onSwitchProfile={handleSwitchProfile} onCreateProfile={handleCreateProfile} onDeleteProfile={handleDeleteProfile} showToast={showToast} />
       default: return null
     }
   }
