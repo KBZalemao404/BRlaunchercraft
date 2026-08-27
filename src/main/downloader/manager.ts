@@ -49,6 +49,7 @@ export class DownloadManager extends EventEmitter {
       name: params.name || path.basename(params.destPath), createdAt: new Date().toISOString()
     }
     this.tasks.set(id, task)
+    this.queue.push(id)
     this.processQueue()
     return id
   }
