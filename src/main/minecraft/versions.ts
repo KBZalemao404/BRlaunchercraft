@@ -212,7 +212,7 @@ export class VersionManager {
 
   private httpGet(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      https.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.1' } }, (res) => {
+      https.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.2' } }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume(); this.httpGet(res.headers.location).then(resolve).catch(reject); return
         }

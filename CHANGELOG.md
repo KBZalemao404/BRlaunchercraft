@@ -6,6 +6,24 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.1.2] — 2026-08-27
+
+### 🔧 Correções de Erros (Críticos)
+- **Downloads nunca iniciavam** — `addTask()` adicionava tasks ao Map mas nunca colocava na `queue`, então `processQueue()` nunca processava nada
+- **Servidor Vercel 404** — `Deployment Protection` (SSO) estava ativo, bloqueando todas as APIs com redirect para login
+- Storage Vercel agora usa `KV_REST_API_URL` + `KV_REST_API_TOKEN` como fallback (dados persistem entre requests)
+
+### ⚡ Melhorias
+- Bibliotecas nativas tratadas por plataforma (natives-windows, natives-osx, natives-linux)
+- Progresso mostra contagem de erros em vez de crashar
+- Try/catch por arquivo em cada download de library/asset
+
+### 📦 Infraestrutura
+- Deploy Vercel: `project protection disable --sso` para liberar APIs públicas
+- Novo instalador gerado
+
+---
+
 ## [0.1.1] — 2026-08-27
 
 ### 🚀 Lançamento (Alpha) — Correções + Auto-Start

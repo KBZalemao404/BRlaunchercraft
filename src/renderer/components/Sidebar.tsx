@@ -47,7 +47,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
           </button>
         ))}
       </nav>
-      <div className="sidebar-footer">v{currentVersion || '0.1.1'}</div>
+      <div className="sidebar-footer">v{currentVersion || '0.1.2'}</div>
     </div>
   )
 }
