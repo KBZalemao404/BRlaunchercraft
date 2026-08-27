@@ -21,3 +21,5 @@ npm-debug.log*
 
 # Vercel
 .vercel/
+vercel-server/.agents/
+vercel-server/skills-lock.json

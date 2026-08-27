@@ -1,6 +1,10 @@
 /**
- * Storage layer for the update server.
- * Uses Vercel KV in production, in-memory Map for local dev.
+ * Storage layer using Upstash Redis REST API.
+ * Falls back to in-memory for local dev.
+ * 
+ * Set env vars:
+ *   UPSTASH_REDIS_REST_URL  — from Upstash dashboard
+ *   UPSTASH_REDIS_REST_TOKEN — from Upstash dashboard
  */
 
 export interface VersionEntry {
@@ -10,7 +14,7 @@ export interface VersionEntry {
   fileName: string
   fileUrl: string
   fileSize: number
-  fileHash: string       // SHA-512 of the installer
+  fileHash: string
   blockMapUrl: string
   channel: 'latest' | 'beta' | 'alpha'
   minClientVersion: string
@@ -23,11 +27,14 @@ export interface ServerState {
   lastHeartbeat: string
   totalDownloads: number
   activeClients: number
-  clientVersions: Record<string, number>  // version -> count
+  clientVersions: Record<string, number>
 }
 
-// ── In-memory store for local dev ──
-const memoryStore: ServerState = {
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || ''
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || ''
+
+// ── In-memory fallback for local dev ──
+const memoryState: ServerState = {
   versions: {},
   lastHeartbeat: new Date().toISOString(),
   totalDownloads: 0,
@@ -35,61 +42,44 @@ const memoryStore: ServerState = {
   clientVersions: {}
 }
 
-function getMemoryStore(): ServerState {
-  return memoryStore
-}
-
-// ── Vercel KV helpers ──
-let kvClient: any = null
-
-async function getKV() {
-  if (kvClient) return kvClient
+// ── Upstash REST helpers ──
+async function redis(command: string, ...args: string[]): Promise<any> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null
   try {
-    const kv = require('@vercel/kv')
-    kvClient = kv
-    return kv
+    const res = await fetch(UPSTASH_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([command, ...args])
+    })
+    const data = await res.json()
+    return data.result
   } catch {
     return null
   }
 }
 
+async function redisGet(key: string): Promise<string | null> {
+  return redis('GET', key)
+}
+
+async function redisSet(key: string, value: string): Promise<boolean> {
+  const result = await redis('SET', key, value)
+  return result === 'OK'
+}
+
+// ── State persistence ──
 async function loadState(): Promise<ServerState> {
-  const kv = await getKV()
-  if (kv) {
-    try {
-      const versions = await kv.get('versions') || {}
-      const meta = await kv.get('meta') || {}
-      return {
-        versions,
-        lastHeartbeat: meta.lastHeartbeat || new Date().toISOString(),
-        totalDownloads: meta.totalDownloads || 0,
-        activeClients: meta.activeClients || 0,
-        clientVersions: meta.clientVersions || {}
-      }
-    } catch {
-      return getMemoryStore()
-    }
+  const raw = await redisGet('mc:state')
+  if (raw) {
+    try { return JSON.parse(raw) } catch {}
   }
-  return getMemoryStore()
+  return memoryState
 }
 
 async function saveState(state: ServerState): Promise<void> {
-  const kv = await getKV()
-  if (kv) {
-    try {
-      await kv.set('versions', state.versions)
-      await kv.set('meta', {
-        lastHeartbeat: state.lastHeartbeat,
-        totalDownloads: state.totalDownloads,
-        activeClients: state.activeClients,
-        clientVersions: state.clientVersions
-      })
-    } catch (e) {
-      console.error('KV save error:', e)
-    }
-  } else {
-    Object.assign(memoryStore, state)
-  }
+  const json = JSON.stringify(state)
+  const ok = await redisSet('mc:state', json)
+  if (!ok) Object.assign(memoryState, state) // fallback to memory
 }
 
 // ── Public API ──
@@ -137,9 +127,7 @@ export async function deleteVersion(version: string): Promise<boolean> {
 export async function recordDownload(version: string): Promise<void> {
   const state = await loadState()
   state.totalDownloads++
-  if (state.versions[version]) {
-    state.versions[version].downloads++
-  }
+  if (state.versions[version]) state.versions[version].downloads++
   await saveState(state)
 }
 
