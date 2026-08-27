@@ -1,6 +1,7 @@
 import { launch, Version, MinecraftFolder, createMinecraftProcessWatcher } from '@xmcl/core'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { Storage } from '../storage/database'
@@ -75,19 +76,19 @@ export class ProcessManager extends EventEmitter {
         if (fs.existsSync(libPath)) classpath += sep + libPath
       }
     }
-    // Build JVM args from version JSON, filtering incompatible ones
+    // Build JVM args from version JSON, filtering by platform rules
     const versionJvmArgs: string[] = []
+    const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux'
     if (versionJson.arguments?.jvm) {
       for (const arg of versionJson.arguments.jvm) {
         if (typeof arg === 'string') {
           versionJvmArgs.push(arg)
-        } else if (arg.rules) {
-          // Evaluate rules (simplified: only check os)
-          let allowed = true
-          for (const rule of arg.rules) {
-            if (rule.action === 'disallow' && rule.os?.name === 'windows') allowed = false
-          }
-          if (allowed && arg.value) {
+        } else if (arg.rules && arg.value) {
+          // Mojang rule format: rules are evaluated in order
+          // 'allow' = include only if rule matches; 'disallow' = exclude if rule matches
+          // If first rule is 'allow', default is exclude. If first is 'disallow', default is include.
+          const include = this.evaluateJvmRules(arg.rules, osName)
+          if (include) {
             const vals = Array.isArray(arg.value) ? arg.value : [arg.value]
             versionJvmArgs.push(...vals)
           }
@@ -95,15 +96,18 @@ export class ProcessManager extends EventEmitter {
       }
     }
     // Filter incompatible args
-    const filteredJvmArgs = this.filterJvmArgs(versionJvmArgs, javaMajor)
-    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `JVM args: ${filteredJvmArgs.length} (filtered from ${versionJvmArgs.length})` })
+    const { filtered, removed } = this.filterJvmArgs(versionJvmArgs, javaMajor)
+    if (removed.length > 0) {
+      this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Filtered JVM args: ${removed.join(', ')}` })
+    }
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `JVM args: ${filtered.length} (filtered from ${versionJvmArgs.length})` })
 
     const args = [
       `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`,
-      ...filteredJvmArgs,
+      ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.6`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.7`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -113,6 +117,8 @@ export class ProcessManager extends EventEmitter {
       '--userType', authAccount?.type === 'microsoft' ? 'msa' : 'legacy',
       '--versionType', 'MinecraftLauncher'
     ]
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java: ${javaPath}` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'DEBUG', source: 'launcher', message: `Args: ${args.join(' ')}` })
     const proc = spawn(javaPath, args, { cwd: instance.gameDir, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] })
     const startTime = Date.now()
     this.setupProcess(proc, instanceId, instance.gameDir, logDir, crashDir, startTime)
@@ -181,24 +187,102 @@ export class ProcessManager extends EventEmitter {
     return 17 // default to 17
   }
 
-  private filterJvmArgs(args: string[], javaMajor: number): string[] {
-    // Flags incompatible with certain Java versions
-    const incompatibleFlags: Array<{ pattern: string; minVersion: number }> = [
+  private evaluateJvmRules(rules: any[], currentOs: string): boolean {
+    // Mojang rules format: evaluate in order, last matching rule wins
+    // Default: if first action is 'allow' → false (exclude by default)
+    //          if first action is 'disallow' → true (include by default)
+    let result = rules[0]?.action === 'disallow'
+    for (const rule of rules) {
+      let matches = true
+      if (rule.os) {
+        if (rule.os.name && rule.os.name !== currentOs) matches = false
+        // Note: rule.os.arch from Mojang is 'x86'|'x86_64'|'arm64'
+        // process.arch from Node is 'ia32'|'x64'|'arm64'
+        if (rule.os.arch) {
+          const archMap: Record<string, string> = { 'x86': 'ia32', 'x86_64': 'x64', 'amd64': 'x64', 'arm64': 'arm64' }
+          const expectedArch = archMap[rule.os.arch] || rule.os.arch
+          if (expectedArch !== process.arch) matches = false
+        }
+        if (rule.os.version && !new RegExp(rule.os.version).test(os.release())) matches = false
+      }
+      if (rule.features) {
+        // features like 'has_custom_resolution' — treat as not matching
+        // (we don't set custom resolution features)
+        matches = false
+      }
+      if (matches) {
+        result = rule.action === 'allow'
+      }
+    }
+    return result
+  }
+
+  private filterJvmArgs(args: string[], javaMajor: number): { filtered: string[]; removed: string[] } {
+    // Known JVM flags that only work on specific Java versions
+    const versionBlocklist: Array<{ pattern: string; minVersion: number }> = [
       { pattern: '--sun-misc-unsafe-memory-access', minVersion: 22 },
+      { pattern: '--enable-preview', minVersion: 21 },
     ]
-    return args.filter(arg => {
-      for (const { pattern, minVersion } of incompatibleFlags) {
+    // Known JVM flags that only work on specific platforms
+    const platformOnly: Array<{ arg: string; platform: string }> = [
+      { arg: '-XstartOnFirstThread', platform: 'darwin' },
+    ]
+    // Known JVM flags that need specific GC support
+    const gcBlocklist: Array<{ pattern: string; minVersion: number }> = [
+      { pattern: '-XX:+UseZGC', minVersion: 21 },
+      { pattern: '-XX:+ZGenerational', minVersion: 21 },
+    ]
+
+    const filtered: string[] = []
+    const removed: string[] = []
+    for (const arg of args) {
+      let keep = true
+
+      // 1) Java version incompatibilities
+      for (const { pattern, minVersion } of versionBlocklist) {
         if (arg.startsWith(pattern) && javaMajor < minVersion) {
-          this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Filtered JVM arg (Java ${javaMajor} < ${minVersion}): ${arg}` })
-          return false
+          removed.push(`${arg} (Java ${javaMajor} < ${minVersion})`)
+          keep = false
+          break
         }
       }
-      // Also filter -Xlog:gc* which some versions don't support
-      if (arg.startsWith('-Xlog:gc') && javaMajor < 9) {
-        return false
+
+      // 2) Platform-specific args
+      if (keep) {
+        for (const { arg: flag, platform } of platformOnly) {
+          if (arg === flag && process.platform !== platform) {
+            removed.push(`${arg} (${platform} only, running on ${process.platform})`)
+            keep = false
+            break
+          }
+        }
       }
-      return true
-    })
+
+      // 3) GC flags needing specific Java version
+      if (keep) {
+        for (const { pattern, minVersion } of gcBlocklist) {
+          if (arg.startsWith(pattern) && javaMajor < minVersion) {
+            removed.push(`${arg} (Java ${javaMajor} < ${minVersion})`)
+            keep = false
+            break
+          }
+        }
+      }
+
+      // 4) Aggressive safety: block any --XX flags that Java might not recognize
+      //    for the detected version (prevents 'Unrecognized option' crashes)
+      if (keep && javaMajor <= 17) {
+        if (arg.startsWith('--')) {
+          // Double-dash flags (--flag) are experimental/preview features
+          // Only Java 22+ uses these; filter all for Java < 22
+          removed.push(`${arg} (experimental flag, Java ${javaMajor})`)
+          keep = false
+        }
+      }
+
+      if (keep) filtered.push(arg)
+    }
+    return { filtered, removed }
   }
 
   private buildExtraArgs(instance: any): string[] {

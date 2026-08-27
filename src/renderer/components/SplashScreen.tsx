@@ -71,7 +71,7 @@ export default function SplashScreen({ onReady }: { onReady: () => void }) {
         MINECRAFT LAUNCHER
       </h1>
       <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '32px' }}>
-        Java Edition · v0.1.6
+        Java Edition · v0.1.7
       </p>
 
       {/* Spinner */}

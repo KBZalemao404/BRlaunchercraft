@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return new Promise<void>((resolve) => {
       const proxyReq = client.get(entry.fileUrl, {
         timeout: 30000,
-        headers: { 'User-Agent': 'MinecraftLauncher-Update/0.1.6' }
+        headers: { 'User-Agent': 'MinecraftLauncher-Update/0.1.7' }
       }, (proxyRes) => {
         // Follow redirects
         if (proxyRes.statusCode && proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const redirectClient = proxyRes.headers.location.startsWith('https') ? https : http
           redirectClient.get(proxyRes.headers.location, {
             timeout: 30000,
-            headers: { 'User-Agent': 'MinecraftLauncher-Update/0.1.6' }
+            headers: { 'User-Agent': 'MinecraftLauncher-Update/0.1.7' }
           }, (redirectRes) => {
             if (redirectRes.statusCode !== 200) {
               res.status(502).json({ error: `Upstream returned ${redirectRes.statusCode}` })
