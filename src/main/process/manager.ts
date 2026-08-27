@@ -42,9 +42,8 @@ export class ProcessManager extends EventEmitter {
     // Find Java
     let javaPath = instance.javaPath || allSettings.javaPath || ''
     if (!javaPath) {
-      const best = this.javaManager.findBest(
-        fs.existsSync(installed.jsonPath) ? JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8')) : {}
-      )
+      const versionJson = fs.existsSync(installed.jsonPath) ? JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8')) : {}
+      const best = this.javaManager.findBest(versionJson, instance.versionId)
       if (best) javaPath = best.path
     }
     if (!javaPath) throw new Error('Java não encontrado. Instale Java para jogar.')
@@ -59,6 +58,19 @@ export class ProcessManager extends EventEmitter {
     // Detect Java major version to filter incompatible JVM args
     const javaMajor = this.getJavaMajor(javaPath)
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java major version: ${javaMajor}` })
+
+    // Validate Java version against Minecraft version requirement
+    const requiredJava = this.getRequiredJavaVersion(instance.versionId)
+    if (javaMajor < requiredJava) {
+      const versionName = instance.versionId
+      const errorMsg = `Java ${javaMajor} encontrado, mas ${versionName} precisa de Java ${requiredJava}+!\n\n` +
+        `Java atual: ${javaPath}\n` +
+        `Versão necessária: Java ${requiredJava}\n\n` +
+        `Baixe Java ${requiredJava} em:\n` +
+        `https://adoptium.net/temurin/releases/?version=${requiredJava}`
+      this.emit('log', { timestamp: new Date().toISOString(), level: 'ERROR', source: 'launcher', message: `Java incompatível: ${javaMajor} < ${requiredJava}` })
+      throw new Error(errorMsg)
+    }
 
     // Use our controlled launch (not @xmcl/core which adds incompatible args from version JSON)
     return this.fallbackLaunch(instanceId, instance, installed, javaPath, authAccount, logDir, crashDir, javaMajor)
@@ -107,7 +119,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.8`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.9`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -185,6 +197,25 @@ export class ProcessManager extends EventEmitter {
       }
     } catch {}
     return 17 // default to 17
+  }
+
+  private getRequiredJavaVersion(versionId: string): number {
+    // Minecraft Java version requirements:
+    // 1.20.5+  → Java 21+
+    // 1.18+    → Java 17+
+    // 1.17+    → Java 16+
+    // Earlier  → Java 8+
+    const match = versionId.match(/^(\d+)\.(\d+)(?:\.(\d+))?/)
+    if (!match) return 8
+    const major = parseInt(match[1])
+    const minor = parseInt(match[2])
+    const patch = parseInt(match[3] || '0')
+    if (major >= 2) return 8 // future major versions
+    if (minor >= 20 && patch >= 5) return 21
+    if (minor >= 20) return 17
+    if (minor >= 18) return 17
+    if (minor >= 17) return 16
+    return 8
   }
 
   private evaluateJvmRules(rules: any[], currentOs: string): boolean {

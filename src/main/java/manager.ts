@@ -125,10 +125,27 @@ export class JavaManager {
     }
   }
 
-  findBest(versionJson?: any): JavaInstall | null {
-    const required = versionJson?.javaVersion?.majorVersion || 17
-    const compatible = this.detected.filter(i => i.compatible)
-    if (compatible.length === 0) return null
+  findBest(versionJson?: any, versionId?: string): JavaInstall | null {
+    // Determine required Java version from Minecraft version
+    let required = versionJson?.javaVersion?.majorVersion || 17
+    if (versionId) {
+      const match = versionId.match(/^(\d+)\.(\d+)(?:\.(\d+))?/)
+      if (match) {
+        const minor = parseInt(match[2])
+        const patch = parseInt(match[3] || '0')
+        if (minor >= 20 && patch >= 5) required = 21
+        else if (minor >= 18) required = 17
+        else if (minor >= 17) required = 16
+      }
+    }
+    // Filter to Java installs that meet the minimum requirement
+    const compatible = this.detected.filter(i => i.majorVersion >= required)
+    if (compatible.length === 0) {
+      // Fallback: any compatible Java
+      const anyCompatible = this.detected.filter(i => i.compatible)
+      return anyCompatible[0] || null
+    }
+    // Prefer exact version match, then closest
     const exact = compatible.find(i => i.majorVersion === required)
     if (exact) return exact
     return compatible.sort((a, b) => Math.abs(a.majorVersion - required) - Math.abs(b.majorVersion - required))[0]
