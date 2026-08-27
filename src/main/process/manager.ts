@@ -59,32 +59,11 @@ export class ProcessManager extends EventEmitter {
     const javaMajor = this.getJavaMajor(javaPath)
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java major version: ${javaMajor}` })
 
-    // Try @xmcl/core launch first
-    try {
-      const proc = await launch({
-        gamePath: instance.gameDir, resourcePath: gamePath, javaPath, version: instance.versionId,
-        accessToken: authAccount?.accessToken || '0',
-        gameProfile: { id: authAccount?.uuid?.replace(/-/g, '') || '00000000000000000000000000000000', name: authAccount?.username || 'Player' },
-        userType: 'mojang' as any,
-        launcherName: 'MinecraftLauncher', versionType: 'Release',
-        extraJVMArgs: this.filterJvmArgs([
-          `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`,
-          ...(instance.jvmArgs || [])
-        ], javaMajor),
-        extraMCArgs: this.buildExtraArgs(instance),
-        resolution: instance.resolution ? { width: instance.resolution.width, height: instance.resolution.height } : undefined,
-        extraExecOption: { detached: true, stdio: 'pipe' },
-        prechecks: []
-      })
-      this.setupProcess(proc, instanceId, instance.gameDir, logDir, crashDir, Date.now())
-      return { pid: proc.pid!, instanceId }
-    } catch (e: any) {
-      this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `@xmcl/core launch failed: ${e.message}. Using fallback.` })
-      return this.fallbackLaunch(instanceId, instance, installed, javaPath, authAccount, logDir, crashDir)
-    }
+    // Use our controlled launch (not @xmcl/core which adds incompatible args from version JSON)
+    return this.fallbackLaunch(instanceId, instance, installed, javaPath, authAccount, logDir, crashDir, javaMajor)
   }
 
-  private fallbackLaunch(instanceId: string, instance: any, installed: any, javaPath: string, authAccount: AuthAccount | null, logDir: string, crashDir: string): { pid: number; instanceId: string } {
+  private fallbackLaunch(instanceId: string, instance: any, installed: any, javaPath: string, authAccount: AuthAccount | null, logDir: string, crashDir: string, javaMajor: number = 17): { pid: number; instanceId: string } {
     const allSettings = this.storage.getAllSettings()
     const rootGamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
     const versionJson = JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8'))
@@ -96,10 +75,35 @@ export class ProcessManager extends EventEmitter {
         if (fs.existsSync(libPath)) classpath += sep + libPath
       }
     }
+    // Build JVM args from version JSON, filtering incompatible ones
+    const versionJvmArgs: string[] = []
+    if (versionJson.arguments?.jvm) {
+      for (const arg of versionJson.arguments.jvm) {
+        if (typeof arg === 'string') {
+          versionJvmArgs.push(arg)
+        } else if (arg.rules) {
+          // Evaluate rules (simplified: only check os)
+          let allowed = true
+          for (const rule of arg.rules) {
+            if (rule.action === 'disallow' && rule.os?.name === 'windows') allowed = false
+          }
+          if (allowed && arg.value) {
+            const vals = Array.isArray(arg.value) ? arg.value : [arg.value]
+            versionJvmArgs.push(...vals)
+          }
+        }
+      }
+    }
+    // Filter incompatible args
+    const filteredJvmArgs = this.filterJvmArgs(versionJvmArgs, javaMajor)
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `JVM args: ${filteredJvmArgs.length} (filtered from ${versionJvmArgs.length})` })
+
     const args = [
-      `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`, ...(instance.jvmArgs || []),
+      `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`,
+      ...filteredJvmArgs,
+      ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.5`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.6`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -178,16 +182,20 @@ export class ProcessManager extends EventEmitter {
   }
 
   private filterJvmArgs(args: string[], javaMajor: number): string[] {
-    // Flags incompatible with Java < 22
-    const java22PlusFlags = ['--sun-misc-unsafe-memory-access']
+    // Flags incompatible with certain Java versions
+    const incompatibleFlags: Array<{ pattern: string; minVersion: number }> = [
+      { pattern: '--sun-misc-unsafe-memory-access', minVersion: 22 },
+    ]
     return args.filter(arg => {
-      for (const flag of java22PlusFlags) {
-        if (arg.startsWith(flag)) {
-          if (javaMajor < 22) {
-            this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Filtered JVM arg (Java ${javaMajor}): ${arg}` })
-            return false
-          }
+      for (const { pattern, minVersion } of incompatibleFlags) {
+        if (arg.startsWith(pattern) && javaMajor < minVersion) {
+          this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Filtered JVM arg (Java ${javaMajor} < ${minVersion}): ${arg}` })
+          return false
         }
+      }
+      // Also filter -Xlog:gc* which some versions don't support
+      if (arg.startsWith('-Xlog:gc') && javaMajor < 9) {
+        return false
       }
       return true
     })

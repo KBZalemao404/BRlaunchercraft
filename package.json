@@ -1,6 +1,6 @@
 {
   "name": "minecraft-launcher",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Minecraft Java Edition Launcher",
   "main": "dist/main/main.js",
   "author": "Freebuff",
