@@ -55,6 +55,10 @@ export class ProcessManager extends EventEmitter {
 
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Iniciando Minecraft ${instance.versionId}` })
 
+    // Detect Java major version to filter incompatible JVM args
+    const javaMajor = this.getJavaMajor(javaPath)
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java major version: ${javaMajor}` })
+
     // Try @xmcl/core launch first
     try {
       const proc = await launch({
@@ -63,7 +67,10 @@ export class ProcessManager extends EventEmitter {
         gameProfile: { id: authAccount?.uuid?.replace(/-/g, '') || '00000000000000000000000000000000', name: authAccount?.username || 'Player' },
         userType: 'mojang' as any,
         launcherName: 'MinecraftLauncher', versionType: 'Release',
-        extraJVMArgs: [`-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`, ...(instance.jvmArgs || [])],
+        extraJVMArgs: this.filterJvmArgs([
+          `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`,
+          ...(instance.jvmArgs || [])
+        ], javaMajor),
         extraMCArgs: this.buildExtraArgs(instance),
         resolution: instance.resolution ? { width: instance.resolution.width, height: instance.resolution.height } : undefined,
         extraExecOption: { detached: true, stdio: 'pipe' },
@@ -92,7 +99,7 @@ export class ProcessManager extends EventEmitter {
     const args = [
       `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`, ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.3`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.4`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -156,6 +163,35 @@ export class ProcessManager extends EventEmitter {
 
   getStatus(instanceId: string) { const i = this.processes.get(instanceId); return i ? { instanceId, pid: i.pid, status: i.status, startTime: i.startTime, exitCode: i.exitCode } : null }
   isRunning(instanceId: string) { return this.processes.has(instanceId) }
+
+  private getJavaMajor(javaPath: string): number {
+    try {
+      const { execSync } = require('child_process')
+      const output = execSync(`"${javaPath}" -version 2>&1`, { timeout: 5000, encoding: 'utf8' })
+      const match = output.match(/version "([\d.]+)/)
+      if (match) {
+        const parts = match[1].split('.')
+        return parseInt(parts[0]) || 17
+      }
+    } catch {}
+    return 17 // default to 17
+  }
+
+  private filterJvmArgs(args: string[], javaMajor: number): string[] {
+    // Flags incompatible with Java < 22
+    const java22PlusFlags = ['--sun-misc-unsafe-memory-access']
+    return args.filter(arg => {
+      for (const flag of java22PlusFlags) {
+        if (arg.startsWith(flag)) {
+          if (javaMajor < 22) {
+            this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Filtered JVM arg (Java ${javaMajor}): ${arg}` })
+            return false
+          }
+        }
+      }
+      return true
+    })
+  }
 
   private buildExtraArgs(instance: any): string[] {
     const args: string[] = []
