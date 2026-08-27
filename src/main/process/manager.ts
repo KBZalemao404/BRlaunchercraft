@@ -58,7 +58,7 @@ export class ProcessManager extends EventEmitter {
     // Try @xmcl/core launch first
     try {
       const proc = await launch({
-        gamePath: instance.gameDir, javaPath, version: instance.versionId,
+        gamePath: instance.gameDir, resourcePath: gamePath, javaPath, version: instance.versionId,
         accessToken: authAccount?.accessToken || '0',
         gameProfile: { id: authAccount?.uuid?.replace(/-/g, '') || '00000000000000000000000000000000', name: authAccount?.username || 'Player' },
         userType: 'mojang' as any,
@@ -78,6 +78,8 @@ export class ProcessManager extends EventEmitter {
   }
 
   private fallbackLaunch(instanceId: string, instance: any, installed: any, javaPath: string, authAccount: AuthAccount | null, logDir: string, crashDir: string): { pid: number; instanceId: string } {
+    const allSettings = this.storage.getAllSettings()
+    const rootGamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
     const versionJson = JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8'))
     const sep = path.delimiter
     let classpath = installed.jarPath
@@ -90,10 +92,10 @@ export class ProcessManager extends EventEmitter {
     const args = [
       `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`, ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      '-Dminecraft.launcher.brand=minecraftlauncher', '-Dminecraft.launcher.version=0.1.2',
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.2`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
-      '--gameDir', instance.gameDir, '--assetsDir', installed.assetsPath,
+      '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
       '--assetIndex', versionJson.assetIndex?.id || instance.versionId,
       '--uuid', authAccount?.uuid || '00000000-0000-0000-0000-000000000000',
       '--accessToken', authAccount?.accessToken || '0',
