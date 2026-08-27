@@ -1,6 +1,7 @@
 import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as zlib from 'zlib'
 import { MinecraftFolder } from '@xmcl/core'
 import { DownloadManager } from '../downloader/manager'
 import { Storage } from '../storage/database'
@@ -234,14 +235,34 @@ export class VersionManager {
 
   private httpGet(url: string, retries = 2): Promise<string> {
     return new Promise((resolve, reject) => {
-      https.get(url, { timeout: 30000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.2' } }, (res) => {
+      https.get(url, {
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'MinecraftLauncher/0.1.2',
+          'Accept-Encoding': 'gzip, deflate'
+        }
+      }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          res.resume(); this.httpGet(res.headers.location).then(resolve).catch(reject); return
+          res.resume()
+          const redirectUrl = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).href
+          this.httpGet(redirectUrl, retries).then(resolve).catch(reject)
+          return
         }
         if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)) }
+        // Handle gzip/deflate decompression
+        let stream: NodeJS.ReadableStream = res
+        const encoding = res.headers['content-encoding']
+        if (encoding === 'gzip') {
+          stream = res.pipe(zlib.createGunzip())
+        } else if (encoding === 'deflate') {
+          stream = res.pipe(zlib.createInflate())
+        } else if (encoding === 'br') {
+          stream = res.pipe(zlib.createBrotliDecompress())
+        }
         const chunks: Buffer[] = []
-        res.on('data', (c: Buffer) => chunks.push(c))
-        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+        stream.on('data', (c: Buffer) => chunks.push(c))
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+        stream.on('error', (err) => reject(err))
       }).on('error', (err) => {
         if (retries > 0) {
           setTimeout(() => this.httpGet(url, retries - 1).then(resolve).catch(reject), 1000)
