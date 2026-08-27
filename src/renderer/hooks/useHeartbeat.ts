@@ -18,7 +18,7 @@ export function useHeartbeat(version?: string) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            version: version || '0.1.7',
+            version: version || '0.1.8',
             platform: navigator.platform || 'unknown'
           })
         })
