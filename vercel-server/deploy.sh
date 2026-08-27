@@ -1,16 +1,23 @@
 #!/bin/bash
-# Deploy script that disables Vercel Deployment Protection after deploy
+# Deploy script — MUST disable protection BEFORE deploy
 set -e
 
-echo "🚀 Deploying to Vercel..."
 cd "$(dirname "$0")"
-vercel --prod --yes
 
-echo "🔓 Disabling deployment protection..."
+echo "🔓 Step 1: Disable deployment protection..."
 vercel project protection disable --sso
 
-echo "✅ Deploy complete! Server: https://minecraft-launcher-updates.vercel.app"
-echo "   Testing heartbeat..."
+echo "🚀 Step 2: Deploy to production..."
+vercel --prod --yes
+
+echo "🔓 Step 3: Disable protection again (just in case)..."
+vercel project protection disable --sso
+
+echo ""
+echo "✅ Deploy complete!"
+echo "   URL: https://minecraft-launcher-updates.vercel.app"
+echo ""
+echo "   Testing..."
 sleep 3
 curl -s "https://minecraft-launcher-updates.vercel.app/api/heartbeat" | head -c 200
 echo ""
