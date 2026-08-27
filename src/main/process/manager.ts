@@ -36,7 +36,7 @@ export class ProcessManager extends EventEmitter {
     if (!installed) throw new Error(`Versão não instalada: ${instance.versionId}. Baixe primeiro.`)
 
     const allSettings = this.storage.getAllSettings()
-    const gamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
+    const gamePath = allSettings.gameDir || path.join(this.storage.getBasePath(), 'instances')
     const minecraft = new MinecraftFolder(gamePath)
 
     // Find Java
@@ -78,13 +78,20 @@ export class ProcessManager extends EventEmitter {
 
   private fallbackLaunch(instanceId: string, instance: any, installed: any, javaPath: string, authAccount: AuthAccount | null, logDir: string, crashDir: string, javaMajor: number = 17): { pid: number; instanceId: string } {
     const allSettings = this.storage.getAllSettings()
-    const rootGamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
+    const rootGamePath = allSettings.gameDir || path.join(this.storage.getBasePath(), 'instances')
+    const minecraft = new MinecraftFolder(rootGamePath)
     const versionJson = JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8'))
     const sep = path.delimiter
     let classpath = installed.jarPath
+    // Use the global libraries path from MinecraftFolder, NOT the per-version one
+    const globalLibsPath = minecraft.getPath('libraries')
     for (const lib of versionJson.libraries || []) {
       if (lib.downloads?.artifact) {
-        const libPath = path.join(installed.librariesPath, lib.downloads.artifact.path || lib.name.replace(/:/g, '/'))
+        // Try global path first, then installed path as fallback
+        const artifactPath = lib.downloads.artifact.path || lib.name.replace(/:/g, '/')
+        const globalLibPath = path.join(globalLibsPath, artifactPath)
+        const localLibPath = path.join(installed.librariesPath, artifactPath)
+        const libPath = fs.existsSync(globalLibPath) ? globalLibPath : localLibPath
         if (fs.existsSync(libPath)) classpath += sep + libPath
       }
     }
@@ -119,7 +126,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.9`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.10`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -129,7 +136,13 @@ export class ProcessManager extends EventEmitter {
       '--userType', authAccount?.type === 'microsoft' ? 'msa' : 'legacy',
       '--versionType', 'MinecraftLauncher'
     ]
+    // Diagnostic logging
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java: ${javaPath}` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `GameDir: ${instance.gameDir}` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `AssetsDir: ${rootGamePath}/assets` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Libs: ${globalLibsPath}` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Classpath entries: ${classpath.split(path.delimiter).length}` })
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `MainClass: ${versionJson.mainClass}` })
     this.emit('log', { timestamp: new Date().toISOString(), level: 'DEBUG', source: 'launcher', message: `Args: ${args.join(' ')}` })
     const proc = spawn(javaPath, args, { cwd: instance.gameDir, env: { ...process.env }, stdio: ['pipe', 'pipe', 'pipe'] })
     const startTime = Date.now()

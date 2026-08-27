@@ -79,7 +79,7 @@ export class ModManager {
     const inst = this.instances.get(instanceId)
     if (!inst) throw new Error('Instance not found')
     const allSettings = this.storage.getAllSettings()
-    const gamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
+    const gamePath = allSettings.gameDir || path.join(this.storage.getBasePath(), 'instances')
     const minecraft = new MinecraftFolder(gamePath)
     try {
       // First get the loader artifact
@@ -96,7 +96,7 @@ export class ModManager {
     const inst = this.instances.get(instanceId)
     if (!inst) throw new Error('Instance not found')
     const allSettings = this.storage.getAllSettings()
-    const gamePath = allSettings.gameDir || path.join(this.storage['basePath'] || '', 'instances')
+    const gamePath = allSettings.gameDir || path.join(this.storage.getBasePath(), 'instances')
     const minecraft = new MinecraftFolder(gamePath)
     try {
       await installForge({ mcversion: minecraftVersion, version: forgeVersion } as any, minecraft)

@@ -13,7 +13,8 @@ export class InstanceManager {
   create(params: { name: string; versionId: string; versionType?: string; javaPath?: string; minMemory?: number; maxMemory?: number; jvmArgs?: string[]; resolution?: { width: number; height: number }; fullscreen?: boolean }): Instance {
     const settings = this.storage.getAllSettings()
     const id = params.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() + '_' + Date.now().toString(36)
-    const gameDir = path.join(settings.gameDir || '', id)
+    // ALWAYS use absolute path: basePath/instances/instanceId
+    const gameDir = path.join(this.storage.getBasePath(), 'instances', id)
 
     const dirs = ['mods', 'resourcepacks', 'shaderpacks', 'saves', 'screenshots', 'config', 'logs', 'crash-reports']
     for (const dir of dirs) {

@@ -45,6 +45,8 @@ export class Storage {
   }
 
   // Settings
+  getBasePath(): string { return this.basePath }
+
   getSetting(key: string): string | null {
     const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any
     return row?.value ?? null

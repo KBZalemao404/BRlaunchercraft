@@ -247,7 +247,7 @@ export class VersionManager {
       https.get(url, {
         timeout: 30000,
         headers: {
-          'User-Agent': 'MinecraftLauncher/0.1.9',
+          'User-Agent': 'MinecraftLauncher/0.1.10',
           'Accept-Encoding': 'gzip, deflate'
         }
       }, (res) => {
@@ -287,7 +287,7 @@ export class VersionManager {
 
   private getSettings() {
     const s = this.storage.getAllSettings()
-    return { gameDir: s.gameDir || path.join(this.storage['basePath'] || '', 'instances'), javaPath: s.javaPath || '' }
+    return { gameDir: s.gameDir || path.join(this.storage.getBasePath(), 'instances'), javaPath: s.javaPath || '' }
   }
 }
 
