@@ -6,6 +6,17 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.1.3] — 2026-08-27
+
+### 🔧 Correções
+- Minecraft crash exit code 1: gamePath apontava para subpasta da instância em vez da raiz
+- resourcePath adicionado ao launch() para encontrar arquivos de versão
+- Fallback launch corrigido para usar rootGamePath no assetsDir
+- @xmcl/installer@4.2.0 + @xmcl/core@2.10.1 integrados como core do download
+- Versão sempre atualizada para evitar conflitos
+
+---
+
 ## [0.1.2] — 2026-08-27
 
 ### 🔧 Correções de Erros (Críticos)
