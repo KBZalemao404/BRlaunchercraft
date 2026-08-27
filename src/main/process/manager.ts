@@ -80,6 +80,14 @@ export class ProcessManager extends EventEmitter {
       throw new Error(errorMsg)
     }
 
+    // Ensure natives are extracted (critical for pre-1.13 versions like 1.7.10)
+    const nativesDir = path.join(installed.gameDir, 'natives')
+    const hasNatives = fs.existsSync(nativesDir) && fs.readdirSync(nativesDir).some(f => f.endsWith('.dll') || f.endsWith('.so') || f.endsWith('.dylib'))
+    if (!hasNatives) {
+      this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: 'Natives not found, extracting...' })
+      await this.extractNatives(installed)
+    }
+
     // Use our controlled launch (not @xmcl/core which adds incompatible args from version JSON)
     return this.fallbackLaunch(instanceId, instance, installed, javaPath, authAccount, logDir, crashDir, javaMajor)
   }
@@ -134,7 +142,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.13`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.14`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
@@ -342,6 +350,71 @@ export class ProcessManager extends EventEmitter {
     if (instance.resolution) { args.push('--width', String(instance.resolution.width), '--height', String(instance.resolution.height)) }
     if (instance.fullscreen) args.push('--fullscreen')
     return args
+  }
+
+  /**
+   * Extract native JARs (.dll/.so/.dylib) for pre-1.13 Minecraft versions.
+   * Uses yauzl to unzip native classifier JARs into the natives/ directory.
+   */
+  private async extractNatives(installed: any): Promise<void> {
+    const yauzl = require('yauzl')
+    const versionJsonPath = installed.jsonPath
+    if (!fs.existsSync(versionJsonPath)) return
+    const versionJson = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'))
+    const nativesDir = path.join(installed.gameDir, 'natives')
+    if (!fs.existsSync(nativesDir)) fs.mkdirSync(nativesDir, { recursive: true })
+    const platformKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-osx' : 'natives-linux'
+    const archMap: Record<string, string> = { 'x64': 'x86_64', 'ia32': 'x86', 'arm64': 'arm64' }
+    const arch = archMap[process.arch] || process.arch
+    const rootGamePath = this.storage.getAllSettings().gameDir || path.join(this.storage.getBasePath(), 'instances')
+    const libsBase = path.join(rootGamePath, 'libraries')
+    const libraries = versionJson.libraries || []
+    let extracted = 0
+    for (const lib of libraries) {
+      let classifierKey = lib.natives?.[process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux']
+      if (classifierKey && typeof classifierKey === 'string') classifierKey = classifierKey.replace('${arch}', arch)
+      const classifiers = lib.downloads?.classifiers
+      let nativeJar: any = null
+      if (classifierKey && classifiers?.[classifierKey]) nativeJar = classifiers[classifierKey]
+      else if (classifiers?.[platformKey]) nativeJar = classifiers[platformKey]
+      if (nativeJar?.path) {
+        const jarPath = path.join(libsBase, nativeJar.path)
+        if (fs.existsSync(jarPath)) {
+          try {
+            await this.extractJarToDir(yauzl, jarPath, nativesDir)
+            extracted++
+          } catch (e: any) {
+            this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Failed to extract native JAR ${nativeJar.path}: ${e.message}` })
+          }
+        }
+      }
+    }
+    this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Extracted ${extracted} native JARs to ${nativesDir}` })
+  }
+
+  private extractJarToDir(yauzl: any, jarPath: string, destDir: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      yauzl.open(jarPath, { lazyEntries: true }, (err: any, zipfile: any) => {
+        if (err) return reject(err)
+        zipfile.readEntry()
+        zipfile.on('entry', (entry: any) => {
+          const fileName = path.basename(entry.fileName).toLowerCase()
+          const isNative = fileName.endsWith('.dll') || fileName.endsWith('.so') ||
+                          fileName.endsWith('.dylib') || fileName.endsWith('.jnilib') || fileName.endsWith('.exe')
+          if (!isNative || entry.fileName.includes('META-INF')) { zipfile.readEntry(); return }
+          const outPath = path.join(destDir, path.basename(entry.fileName))
+          zipfile.openReadStream(entry, (err2: any, readStream: any) => {
+            if (err2) { zipfile.readEntry(); return }
+            const writeStream = fs.createWriteStream(outPath)
+            readStream.pipe(writeStream)
+            writeStream.on('close', () => zipfile.readEntry())
+            writeStream.on('error', () => zipfile.readEntry())
+          })
+        })
+        zipfile.on('end', () => resolve())
+        zipfile.on('error', (e: any) => reject(e))
+      })
+    })
   }
 
   private parseLog(line: string, source: string): LogEntry {

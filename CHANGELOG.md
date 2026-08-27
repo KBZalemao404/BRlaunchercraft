@@ -6,6 +6,23 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.1.14] — 2026-08-27
+
+### ✅ Native Extraction Fix
+
+**Problema:** MC 1.7.10 (e outras versoes pre-1.13) crashava com `no lwjgl in java.library.path` porque as native JARs nao eram extraidas.
+
+**Causa:** `@xmcl/installer` baixa as classifier JARs (lwjgl-platform-natives-windows.jar) mas nao extrai os `.dll`/`.so` para a pasta `natives/`.
+
+**Fix:**
+- `extractNatives()` usa yauzl para extrair apenas arquivos nativos (.dll/.so/.dylib/.jnilib) das JARs
+- Executa automaticamente apos `@xmcl/installer` na instalacao
+- Executa como fallback no ProcessManager antes de launch se a pasta natives estiver vazia
+- Suporta todas as plataformas (Windows/Linux/macOS)
+- Suporta formato antigo (`lib.natives` map) e moderno (`classifiers`)
+
+---
+
 ## [0.1.5] — 2026-08-27
 
 ### ✨ Funcionalidades

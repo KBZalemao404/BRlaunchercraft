@@ -244,7 +244,7 @@ export class ProfileManager extends EventEmitter {
       const http = require('http')
       const client = url.startsWith('https') ? https : http
 
-      client.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.13' } }, (res: any) => {
+      client.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.14' } }, (res: any) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume()
           this.downloadSkin(res.headers.location).then(resolve).catch(reject)

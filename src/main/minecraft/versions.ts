@@ -3,6 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { MinecraftFolder } from '@xmcl/core'
 import { install } from '@xmcl/installer'
+import * as yauzl from 'yauzl'
 import { DownloadManager } from '../downloader/manager'
 import { Storage } from '../storage/database'
 import { VersionManifest, InstalledVersion } from '../../shared/types'
@@ -53,6 +54,11 @@ export class VersionManager {
         minecraft,
         { side: 'client' } as any
       )
+
+      // CRITICAL: Extract native JARs (.dll/.so/.dylib) into natives/ directory
+      // @xmcl/installer downloads native JARs but does NOT extract them
+      progress('natives', 85, 'Extraindo natives...')
+      await this.extractNatives(versionId, minecraft)
 
       progress('complete', 100, 'Instalacao concluida!')
     } catch (err: any) {
@@ -211,6 +217,99 @@ export class VersionManager {
     progress('complete', 100, 'Instalacao concluida!')
   }
 
+  /**
+   * Extract native JARs (.dll/.so/.dylib) into the natives/ directory.
+   * For pre-1.13 versions (like 1.7.10), LWJGL/JInput native libs are in classifier JARs
+   * that must be unzipped for Java to find them via -Djava.library.path.
+   */
+  async extractNatives(versionId: string, minecraft: MinecraftFolder): Promise<void> {
+    const versionDir = minecraft.getVersionRoot(versionId)
+    const jsonPath = minecraft.getVersionJson(versionId)
+    if (!fs.existsSync(jsonPath)) return
+    const versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+    const nativesDir = path.join(versionDir, 'natives')
+    if (!fs.existsSync(nativesDir)) fs.mkdirSync(nativesDir, { recursive: true })
+    // Check if already extracted (has .dll/.so files)
+    const existingFiles = fs.readdirSync(nativesDir).filter(f => f.endsWith('.dll') || f.endsWith('.so') || f.endsWith('.dylib'))
+    if (existingFiles.length > 0) {
+      console.log(`[versions] Natives already extracted for ${versionId}: ${existingFiles.length} files`)
+      return
+    }
+    // Platform mapping
+    const platformKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-osx' : 'natives-linux'
+    // Resolve platform-specific rules (e.g., ${arch})
+    const archMap: Record<string, string> = { 'x64': 'x86_64', 'ia32': 'x86', 'arm64': 'arm64' }
+    const arch = archMap[process.arch] || process.arch
+    // Find native libraries
+    const libraries = versionJson.libraries || []
+    let extractedCount = 0
+    for (const lib of libraries) {
+      // Modern format: lib.natives map
+      let classifierKey = lib.natives?.[process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux']
+      if (classifierKey && typeof classifierKey === 'string') {
+        classifierKey = classifierKey.replace('${arch}', arch)
+      }
+      // Legacy format: classifiers map  
+      const classifiers = lib.downloads?.classifiers
+      let nativeJar: any = null
+      if (classifierKey && classifiers?.[classifierKey]) {
+        nativeJar = classifiers[classifierKey]
+      } else if (classifiers?.[platformKey]) {
+        nativeJar = classifiers[platformKey]
+      }
+      if (nativeJar && nativeJar.path) {
+        const jarPath = path.join(minecraft.getPath('libraries'), nativeJar.path)
+        if (fs.existsSync(jarPath)) {
+          try {
+            await this.extractJar(jarPath, nativesDir)
+            extractedCount++
+          } catch (e) {
+            console.warn(`[versions] Failed to extract native JAR ${nativeJar.path}: ${(e as Error).message}`)
+          }
+        }
+      }
+    }
+    console.log(`[versions] Extracted ${extractedCount} native JARs for ${versionId}`)
+  }
+
+  /**
+   * Extract a JAR/ZIP file, only including native binaries (.dll, .so, .dylib, .jnilib)
+   */
+  private extractJar(jarPath: string, destDir: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      yauzl.open(jarPath, { lazyEntries: true }, (err, zipfile) => {
+        if (err) return reject(err)
+        zipfile.readEntry()
+        zipfile.on('entry', (entry: any) => {
+          const fileName = path.basename(entry.fileName).toLowerCase()
+          const isNative = fileName.endsWith('.dll') || fileName.endsWith('.so') ||
+                          fileName.endsWith('.dylib') || fileName.endsWith('.jnilib') ||
+                          fileName.endsWith('.exe') // jinput-platform has .exe
+          if (!isNative) {
+            zipfile.readEntry()
+            return
+          }
+          // Skip META-INF
+          if (entry.fileName.includes('META-INF')) {
+            zipfile.readEntry()
+            return
+          }
+          // Extract to natives dir (flatten - just the filename)
+          const outPath = path.join(destDir, path.basename(entry.fileName))
+          zipfile.openReadStream(entry, (err2, readStream) => {
+            if (err2) { zipfile.readEntry(); return }
+            const writeStream = fs.createWriteStream(outPath)
+            readStream.pipe(writeStream)
+            writeStream.on('close', () => zipfile.readEntry())
+            writeStream.on('error', () => zipfile.readEntry())
+          })
+        })
+        zipfile.on('end', () => resolve())
+        zipfile.on('error', (e) => reject(e))
+      })
+    })
+  }
+
   async uninstallVersion(versionId: string): Promise<void> {
     const settings = this.getSettings()
     const minecraft = new MinecraftFolder(settings.gameDir)
@@ -247,7 +346,7 @@ export class VersionManager {
       https.get(url, {
         timeout: 30000,
         headers: {
-          'User-Agent': 'MinecraftLauncher/0.1.13',
+          'User-Agent': 'MinecraftLauncher/0.1.14',
           'Accept-Encoding': 'gzip, deflate'
         }
       }, (res) => {
