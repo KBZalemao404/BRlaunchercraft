@@ -17,7 +17,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@xmcl/core": "^2.14.0",
+    "@xmcl/core": "^2.10.1",
     "@xmcl/installer": "^4.2.0",
     "better-sqlite3": "^11.0.0"
   },

@@ -1,8 +1,8 @@
 import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as zlib from 'zlib'
 import { MinecraftFolder } from '@xmcl/core'
+import { install } from '@xmcl/installer'
 import { DownloadManager } from '../downloader/manager'
 import { Storage } from '../storage/database'
 import { VersionManifest, InstalledVersion } from '../../shared/types'
@@ -44,12 +44,26 @@ export class VersionManager {
 
     progress('metadata', 0, 'Preparando instalacao...')
 
+    // PRIMARY: Use @xmcl/installer (the core library)
     try {
-      // Use manual install only (avoids @xmcl/installer abort handler crashes)
-      await this.manualInstall(versionId, versionUrl, minecraft, progress)
+      progress('metadata', 5, 'Baixando via @xmcl/installer...')
+      
+      await install(
+        { id: versionId, url: versionUrl },
+        minecraft,
+        { side: 'client' } as any
+      )
+
+      progress('complete', 100, 'Instalacao concluida!')
     } catch (err: any) {
-      progress('error', 0, `Erro na instalacao: ${err.message}`)
-      throw err
+      console.warn(`[versions] @xmcl/installer failed for ${versionId}: ${err.message}. Falling back to manual install.`)
+      // FALLBACK: Manual install
+      try {
+        await this.manualInstall(versionId, versionUrl, minecraft, progress)
+      } catch (err2: any) {
+        progress('error', 0, `Erro na instalacao: ${err2.message}`)
+        throw err2
+      }
     }
 
     // Save installed version info
@@ -82,12 +96,10 @@ export class VersionManager {
       try {
         const raw = fs.readFileSync(jsonPath, 'utf8')
         versionJson = JSON.parse(raw)
-        // Validate it has expected structure
         if (!versionJson.downloads?.client && !versionJson.libraries) {
           throw new Error('Invalid version JSON structure')
         }
       } catch (e) {
-        // Corrupt JSON on disk — delete and re-download
         console.warn(`[versions] Corrupt cached JSON for ${versionId}, re-downloading`)
         try { fs.unlinkSync(jsonPath) } catch {}
         versionJson = null
@@ -120,15 +132,13 @@ export class VersionManager {
       }
     }
 
-    // Download libraries (with error tolerance for platform-specific libs)
+    // Download libraries
     const librariesDir = path.join(versionDir, 'libraries')
     const libraries = versionJson.libraries || []
     let libCount = 0
     let libErrors = 0
     for (const lib of libraries) {
-      // Handle classifiers (native libraries per platform)
       if (lib.downloads?.classifiers) {
-        const natives = lib.natives
         const platformKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-osx' : 'natives-linux'
         const classifier = lib.downloads.classifiers[platformKey] || lib.downloads.classifiers['natives-' + process.arch]
         if (classifier) {
@@ -145,7 +155,6 @@ export class VersionManager {
           }
         }
       }
-      // Download artifact
       if (lib.downloads?.artifact) {
         const art = lib.downloads.artifact
         const libPath = path.join(librariesDir, art.path || lib.name.replace(/:/g, '/'))
@@ -253,10 +262,13 @@ export class VersionManager {
         let stream: NodeJS.ReadableStream = res
         const encoding = res.headers['content-encoding']
         if (encoding === 'gzip') {
+          const zlib = require('zlib')
           stream = res.pipe(zlib.createGunzip())
         } else if (encoding === 'deflate') {
+          const zlib = require('zlib')
           stream = res.pipe(zlib.createInflate())
         } else if (encoding === 'br') {
+          const zlib = require('zlib')
           stream = res.pipe(zlib.createBrotliDecompress())
         }
         const chunks: Buffer[] = []
