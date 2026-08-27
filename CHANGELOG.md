@@ -18,8 +18,16 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - Progresso mostra contagem de erros em vez de crashar
 - Try/catch por arquivo em cada download de library/asset
 
+### ✨ Atualização In-App (Nova)
+- Download direto no launcher (sem abrir navegador)
+- Barra de progresso com velocidade (MB/s) e ETA
+- Botão cancelar download
+- Endpoint `/api/fetch-update` proxy no Vercel
+- Após download: executa .exe e fecha o launcher automaticamente
+
 ### 📦 Infraestrutura
 - Deploy Vercel: `project protection disable --sso` para liberar APIs públicas
+- GitHub Release v0.1.2 com instalador publicado
 - Novo instalador gerado
 
 ---
