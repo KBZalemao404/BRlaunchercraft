@@ -76,10 +76,32 @@ export class VersionManager {
     progress('metadata', 5, 'Baixando metadados...')
     const jsonPath = minecraft.getVersionJson(versionId)
     let versionJson: any
+    // Try loading from cache first, with JSON validation
     if (fs.existsSync(jsonPath)) {
-      versionJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
-    } else {
-      versionJson = JSON.parse(await this.httpGet(versionUrl))
+      try {
+        const raw = fs.readFileSync(jsonPath, 'utf8')
+        versionJson = JSON.parse(raw)
+        // Validate it has expected structure
+        if (!versionJson.downloads?.client && !versionJson.libraries) {
+          throw new Error('Invalid version JSON structure')
+        }
+      } catch (e) {
+        // Corrupt JSON on disk — delete and re-download
+        console.warn(`[versions] Corrupt cached JSON for ${versionId}, re-downloading`)
+        try { fs.unlinkSync(jsonPath) } catch {}
+        versionJson = null
+      }
+    }
+    // Download fresh JSON if needed
+    if (!versionJson) {
+      const raw = await this.httpGet(versionUrl)
+      try {
+        versionJson = JSON.parse(raw)
+      } catch {
+        throw new Error(`Version JSON from Mojang is invalid (received ${raw.length} bytes, first 200: ${raw.substring(0, 200)})`)
+      }
+      const dir = path.dirname(jsonPath)
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(jsonPath, JSON.stringify(versionJson, null, 2), 'utf8')
     }
 
@@ -210,15 +232,23 @@ export class VersionManager {
     })
   }
 
-  private httpGet(url: string): Promise<string> {
+  private httpGet(url: string, retries = 2): Promise<string> {
     return new Promise((resolve, reject) => {
-      https.get(url, { timeout: 15000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.2' } }, (res) => {
+      https.get(url, { timeout: 30000, headers: { 'User-Agent': 'MinecraftLauncher/0.1.2' } }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume(); this.httpGet(res.headers.location).then(resolve).catch(reject); return
         }
         if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)) }
-        let data = ''; res.on('data', (c) => data += c); res.on('end', () => resolve(data))
-      }).on('error', reject)
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+      }).on('error', (err) => {
+        if (retries > 0) {
+          setTimeout(() => this.httpGet(url, retries - 1).then(resolve).catch(reject), 1000)
+        } else {
+          reject(err)
+        }
+      })
     })
   }
 
