@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
   getUpdateState: () => ipcRenderer.invoke('update:state'),
   onUpdateState: (cb: Function) => ipcRenderer.on('update:state', (_, d) => cb(d)),
 

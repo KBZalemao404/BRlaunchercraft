@@ -50,11 +50,20 @@ export function useUpdate() {
     }
   }, [])
 
+  const cancelUpdate = useCallback(async () => {
+    try {
+      await window.electronAPI?.cancelUpdate?.()
+    } catch (e) {
+      console.error('Failed to cancel update:', e)
+    }
+  }, [])
+
   return {
     state,
     checkForUpdates,
     downloadUpdate,
     installUpdate,
+    cancelUpdate,
     isChecking: state.status === 'checking',
     isDownloading: state.status === 'downloading',
     isDownloaded: state.status === 'downloaded',

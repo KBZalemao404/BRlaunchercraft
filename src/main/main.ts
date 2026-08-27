@@ -282,7 +282,10 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:install', () => {
   updater.installUpdate()
 })
-ipcMain.handle('  update:state', () => updater.getState())
+ipcMain.handle('update:cancel', () => {
+  updater.cancelDownload()
+})
+ipcMain.handle('update:state', () => updater.getState())
 // Updater state is already forwarded via sendToRenderer inside the updater class
 
 // ═══════ AUTO-START / SYSTEM TRAY ═══════

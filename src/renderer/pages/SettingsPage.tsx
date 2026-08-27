@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import type { SystemInfo, AppSettings, JavaInstall, UpdateState } from '../../shared/types'
 import UpdatePanel from '../components/UpdatePanel'
 
-interface Props { settings: AppSettings | null; systemInfo: SystemInfo | null; onSave: (s: AppSettings) => void; updateState: UpdateState; onCheckUpdate: () => void; onDownloadUpdate: () => void; onInstallUpdate: () => void }
+interface Props { settings: AppSettings | null; systemInfo: SystemInfo | null; onSave: (s: AppSettings) => void; updateState: UpdateState; onCheckUpdate: () => void; onDownloadUpdate: () => void; onInstallUpdate: () => void; onCancelUpdate?: () => void }
 
-export default function SettingsPage({ settings, systemInfo, onSave, updateState, onCheckUpdate, onDownloadUpdate, onInstallUpdate }: Props) {
+export default function SettingsPage({ settings, systemInfo, onSave, updateState, onCheckUpdate, onDownloadUpdate, onInstallUpdate, onCancelUpdate }: Props) {
   const [form, setForm] = useState<AppSettings>({ javaPath: '', autoDetectJava: true, minMemory: 512, maxMemory: 2048, jvmArgs: '', resolution: { width: 854, height: 480 }, fullscreen: false, closeOnGameStart: false, keepLauncherOpen: true, showConsole: true, verifyFiles: true, downloadDir: '', maxConcurrentDownloads: 4, theme: 'dark', language: 'pt-BR', gameDir: '', launcherVersion: '0.1.2', autoStart: false, startMinimized: false, minimizeToTray: false })
   const [javaInstalls, setJavaInstalls] = useState<JavaInstall[]>([])
   const [detecting, setDetecting] = useState(false)
@@ -20,7 +20,7 @@ export default function SettingsPage({ settings, systemInfo, onSave, updateState
     <>
       <div className="page-header"><h1 className="page-title">⚙️ Configurações</h1><p className="page-subtitle">Configure o launcher e o Minecraft</p></div>
 
-      <UpdatePanel state={updateState} onCheck={onCheckUpdate} onDownload={onDownloadUpdate} onInstall={onInstallUpdate} />
+      <UpdatePanel state={updateState} onCheck={onCheckUpdate} onDownload={onDownloadUpdate} onInstall={onInstallUpdate} onCancel={onCancelUpdate} />
 
       {systemInfo && (
         <><div className="section-divider"><div className="section-divider-line" /><span className="section-divider-text">Sistema</span><div className="section-divider-line" /></div>

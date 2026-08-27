@@ -82,6 +82,7 @@ if (!(window as any).electronAPI) {
     showNotification: () => Promise.resolve(),
     quitApp: () => Promise.resolve(),
     relaunchApp: () => Promise.resolve(),
+    cancelUpdate: () => Promise.resolve(),
     removeAllListeners: () => {},
   }
 }

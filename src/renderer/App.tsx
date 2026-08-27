@@ -116,7 +116,7 @@ export default function App() {
       case 'mods': return <ModsPage instances={instances} />
       case 'downloads': return <DownloadsPage />
       case 'console': return <ConsolePage logs={logs} />
-      case 'settings': return <SettingsPage settings={settings} systemInfo={systemInfo} onSave={handleSaveSettings} updateState={update.state} onCheckUpdate={update.checkForUpdates} onDownloadUpdate={update.downloadUpdate} onInstallUpdate={update.installUpdate} />
+      case 'settings': return <SettingsPage settings={settings} systemInfo={systemInfo} onSave={handleSaveSettings} updateState={update.state} onCheckUpdate={update.checkForUpdates} onDownloadUpdate={update.downloadUpdate} onInstallUpdate={update.installUpdate} onCancelUpdate={update.cancelUpdate} />
       case 'profile': return <ProfilePage profiles={profiles} activeProfileId={activeProfileId} onSwitchProfile={handleSwitchProfile} onCreateProfile={handleCreateProfile} onDeleteProfile={handleDeleteProfile} showToast={showToast} />
       default: return null
     }

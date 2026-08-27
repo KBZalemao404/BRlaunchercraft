@@ -5,6 +5,7 @@ interface Props {
   onCheck: () => void
   onDownload: () => void
   onInstall: () => void
+  onCancel?: () => void
 }
 
 function formatBytes(bytes: number): string {
@@ -19,7 +20,14 @@ function formatSpeed(bytesPerSec: number): string {
   return formatBytes(bytesPerSec) + '/s'
 }
 
-export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: Props) {
+function formatETA(bytesPerSec: number, remaining: number): string {
+  if (bytesPerSec <= 0 || remaining <= 0) return ''
+  const seconds = Math.ceil(remaining / bytesPerSec)
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
+export default function UpdatePanel({ state, onCheck, onDownload, onInstall, onCancel }: Props) {
   const renderStatus = () => {
     switch (state.status) {
       case 'checking':
@@ -63,10 +71,17 @@ export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: P
               <div className="update-progress-bar">
                 <div className="update-progress-fill" style={{ width: `${state.progress?.percent || 0}%` }} />
               </div>
-              {state.progress && (
+              {state.progress && state.progress.total > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)' }}>
                   <span>{formatBytes(state.progress.transferred)} / {formatBytes(state.progress.total)}</span>
-                  <span>{formatSpeed(state.progress.bytesPerSecond)}</span>
+                  <span>
+                    {formatSpeed(state.progress.bytesPerSecond)}
+                    {state.progress.bytesPerSecond > 0 && (
+                      <span style={{ marginLeft: '8px', color: 'var(--text-secondary)' }}>
+                        ETA: {formatETA(state.progress.bytesPerSecond, state.progress.total - state.progress.transferred)}
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
             </div>
@@ -81,7 +96,7 @@ export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: P
                 v{state.info?.version} baixada!
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                Clique em "Reiniciar e Atualizar" para aplicar.
+                Clique em "Instalar Atualização" para aplicar. O launcher será fechado e o instalador será aberto.
               </div>
             </div>
           </div>
@@ -141,11 +156,11 @@ export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: P
       {renderStatus()}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
-        {state.status === 'idle' || state.status === 'not-available' || state.status === 'error' ? (
+        {(state.status === 'idle' || state.status === 'not-available' || state.status === 'error') && (
           <button className="btn btn-secondary" onClick={onCheck}>
             🔍 Verificar Atualizações
           </button>
-        ) : null}
+        )}
 
         {state.status === 'available' && (
           <button className="btn btn-launch" onClick={onDownload}>
@@ -154,20 +169,16 @@ export default function UpdatePanel({ state, onCheck, onDownload, onInstall }: P
         )}
 
         {state.status === 'downloading' && (
-          <button className="btn btn-secondary" disabled>
-            ⏳ Baixando...
+          <button className="btn btn-secondary" onClick={onCancel}>
+            ❌ Cancelar Download
           </button>
         )}
 
         {state.status === 'downloaded' && (
           <button className="btn btn-launch" onClick={onInstall} style={{ background: 'var(--green)' }}>
-            🚀 Reiniciar e Atualizar
+            🚀 Instalar Atualização
           </button>
         )}
-
-        <button className="btn btn-secondary btn-sm" onClick={() => window.electronAPI?.openUrl?.('https://github.com/KBZalemao404/BRlaunchercraft/blob/main/CHANGELOG.md')} style={{ marginLeft: 'auto' }}>
-          📋 Ver Changelog
-        </button>
       </div>
     </div>
   )

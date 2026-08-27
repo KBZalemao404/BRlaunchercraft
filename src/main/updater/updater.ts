@@ -3,6 +3,8 @@ import Logger from '../logger/logger'
 import { app } from 'electron'
 import * as https from 'https'
 import * as http from 'http'
+import * as fs from 'fs'
+import * as path from 'path'
 
 const UPDATE_SERVER_URL = process.env.UPDATE_SERVER_URL || 'https://minecraft-launcher-updates.vercel.app'
 const HEARTBEAT_INTERVAL = 1_000
@@ -18,7 +20,7 @@ export type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' |
 
 export interface UpdateState {
   status: UpdateStatus
-  info?: { version: string; releaseDate: string; releaseNotes?: string; fileUrl?: string }
+  info?: { version: string; releaseDate: string; releaseNotes?: string; fileUrl?: string; fileName?: string }
   progress?: UpdateProgress
   error?: string
   currentVersion: string
@@ -30,6 +32,7 @@ export class LauncherUpdater {
   private state: UpdateState
   private updateCheckInterval: NodeJS.Timeout | null = null
   private heartbeatInterval: NodeJS.Timeout | null = null
+  private abortController: AbortController | null = null
 
   constructor(logger: Logger) {
     this.logger = logger
@@ -68,7 +71,8 @@ export class LauncherUpdater {
             version: result.version,
             releaseDate: result.releaseDate,
             releaseNotes: result.releaseNotes,
-            fileUrl: result.fileUrl
+            fileUrl: result.fileUrl,
+            fileName: result.fileName
           }
         })
       } else {
@@ -83,29 +87,86 @@ export class LauncherUpdater {
     }
   }
 
-  // ── Download & Install ──
+  // ── Download (In-App) ──
 
   async downloadUpdate(): Promise<void> {
-    if (!this.state.info?.fileUrl) {
-      throw new Error('Nenhuma URL de download disponível')
+    if (!this.state.info?.version) {
+      throw new Error('Nenhuma atualização disponível')
     }
+
+    const version = this.state.info.version
+    const fileName = this.state.info.fileName || `MinecraftLauncherSetup-${version}.exe`
+    
+    // Create temp directory for updates
+    const updatesDir = path.join(app.getPath('temp'), 'minecraft-launcher-updates')
+    if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true })
+
+    const destPath = path.join(updatesDir, fileName)
+
+    // If already downloaded, skip
+    if (fs.existsSync(destPath)) {
+      this.logger.info('updater', `Update already downloaded: ${destPath}`)
+      this.updateState({ status: 'downloaded' })
+      return
+    }
+
     this.updateState({ status: 'downloading', progress: { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 } })
 
     // Track download on server
-    this.reportDownload(this.state.info.version)
+    this.reportDownload(version)
 
-    // Open download URL in default browser
-    this.logger.info('updater', `Opening download: ${this.state.info.fileUrl}`)
-    await shell.openExternal(this.state.info.fileUrl)
+    // Download via Vercel proxy
+    const downloadUrl = `${UPDATE_SERVER_URL}/api/fetch-update?version=${version}`
+    this.logger.info('updater', `Downloading update v${version} from: ${downloadUrl}`)
 
-    // Mark as downloaded (user will install manually from browser download)
-    this.updateState({ status: 'downloaded' })
+    try {
+      await this.downloadFile(downloadUrl, destPath)
+      this.logger.info('updater', `Update downloaded to: ${destPath}`)
+      this.updateState({ status: 'downloaded' })
+    } catch (err: any) {
+      this.logger.error('updater', `Download failed: ${err.message}`)
+      // Clean up partial file
+      try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath) } catch {}
+      this.updateState({ status: 'error', error: `Falha no download: ${err.message}` })
+      throw err
+    }
   }
 
+  // ── Install (Run Installer) ──
+
   async installUpdate(): Promise<void> {
-    if (!this.state.info?.fileUrl) return
-    // Re-open the download URL
-    await shell.openExternal(this.state.info.fileUrl)
+    const version = this.state.info?.version
+    if (!version) return
+
+    const fileName = this.state.info?.fileName || `MinecraftLauncherSetup-${version}.exe`
+    const updatesDir = path.join(app.getPath('temp'), 'minecraft-launcher-updates')
+    const installerPath = path.join(updatesDir, fileName)
+
+    if (!fs.existsSync(installerPath)) {
+      throw new Error('Instalador não encontrado. Baixe novamente.')
+    }
+
+    this.logger.info('updater', `Running installer: ${installerPath}`)
+    
+    // Run the installer and close the launcher
+    await shell.openPath(installerPath)
+    
+    // Give the installer a moment to start, then close the launcher
+    setTimeout(() => {
+      app.quit()
+    }, 1000)
+  }
+
+  // ── Cancel Download ──
+
+  cancelDownload(): void {
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+    if (this.state.status === 'downloading') {
+      this.updateState({ status: 'available' })
+    }
   }
 
   // ── Auto Check ──
@@ -148,6 +209,7 @@ export class LauncherUpdater {
   }
 
   destroy() {
+    this.cancelDownload()
     this.stopAutoCheck()
     this.stopHeartbeat()
     this.mainWindow = null
@@ -169,6 +231,87 @@ export class LauncherUpdater {
       req.write(body)
       req.end()
     } catch {}
+  }
+
+  // ── Download Helper ──
+
+  private downloadFile(url: string, destPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.abortController = new AbortController()
+      const client = url.startsWith('https') ? https : http
+
+      const req = client.get(url, {
+        timeout: 120000, // 2 min timeout for large files
+        headers: { 'User-Agent': 'MinecraftLauncher/' + app.getVersion() }
+      }, (res) => {
+        // Follow redirects
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume()
+          this.downloadFile(res.headers.location, destPath).then(resolve).catch(reject)
+          return
+        }
+
+        if (res.statusCode !== 200) {
+          res.resume()
+          reject(new Error(`HTTP ${res.statusCode}`))
+          return
+        }
+
+        const totalSize = parseInt(res.headers['content-length'] || '0', 10)
+        let downloaded = 0
+        let lastBytes = 0
+        let lastTime = Date.now()
+
+        const file = fs.createWriteStream(destPath)
+
+        res.on('data', (chunk) => {
+          downloaded += chunk.length
+
+          const now = Date.now()
+          const elapsed = (now - lastTime) / 1000
+          const speed = elapsed >= 0.5 ? Math.round((downloaded - lastBytes) / elapsed) : 0
+
+          if (elapsed >= 0.5 || downloaded === totalSize) {
+            const percent = totalSize > 0 ? Math.min(99, Math.round((downloaded / totalSize) * 100)) : 0
+            this.updateState({
+              progress: {
+                percent,
+                transferred: downloaded,
+                total: totalSize,
+                bytesPerSecond: speed
+              }
+            })
+            lastBytes = downloaded
+            lastTime = now
+          }
+        })
+
+        res.pipe(file)
+
+        file.on('finish', () => {
+          file.close()
+          this.updateState({
+            progress: { percent: 100, transferred: downloaded, total: totalSize, bytesPerSecond: 0 }
+          })
+          resolve()
+        })
+
+        file.on('error', (err) => {
+          file.close()
+          try { fs.unlinkSync(destPath) } catch {}
+          reject(err)
+        })
+      })
+
+      req.on('error', reject)
+      req.on('timeout', () => {
+        req.destroy()
+        reject(new Error('Download timeout'))
+      })
+
+      // Store req for abort
+      ;(this.abortController as any)._req = req
+    })
   }
 
   // ── HTTP Helper ──
