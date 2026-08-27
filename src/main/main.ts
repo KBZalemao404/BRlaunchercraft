@@ -45,7 +45,7 @@ function getSettings(): AppSettings {
     verifyFiles: saved.verifyFiles !== 'false', downloadDir: saved.downloadDir || path.join(appDataPath, 'downloads'),
     maxConcurrentDownloads: parseInt(saved.maxConcurrentDownloads) || 4, theme: 'dark',
     language: saved.language || 'pt-BR', gameDir: saved.gameDir || path.join(appDataPath, 'instances'),
-    launcherVersion: '0.1.4',
+    launcherVersion: '0.1.5',
     autoStart: saved.autoStart === 'true',
     startMinimized: saved.startMinimized === 'true',
     minimizeToTray: saved.minimizeToTray === 'true'
@@ -263,7 +263,7 @@ ipcMain.handle('news:fetch', async () => {
 
 // Diagnostics
 ipcMain.handle('diagnostics:export', () => JSON.stringify({
-  version: '0.1.4', timestamp: new Date().toISOString(), platform: process.platform,
+  version: '0.1.5', timestamp: new Date().toISOString(), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, electronVersion: process.versions.electron,
   javaInstalls: javaManager.detectAll().length,
   installedVersions: Object.keys(storage.getInstalledVersions()),

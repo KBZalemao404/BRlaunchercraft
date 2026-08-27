@@ -6,6 +6,18 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
+## [0.1.5] — 2026-08-27
+
+### ✨ Funcionalidades
+- Sistema de comandos de desenvolvimento (.commands.md)
+- `/v` para release completo automático
+- `/b` para build
+- `/d` para deploy Vercel
+- `/g` para git push
+- `/r` para release GitHub
+
+---
+
 ## [0.1.3] — 2026-08-27
 
 ### 🔧 Correções

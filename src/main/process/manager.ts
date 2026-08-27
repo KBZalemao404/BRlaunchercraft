@@ -99,7 +99,7 @@ export class ProcessManager extends EventEmitter {
     const args = [
       `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`, ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.4`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.5`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
