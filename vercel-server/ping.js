@@ -13,7 +13,7 @@
  */
 
 const SERVER_URL = process.env.SERVER_URL || process.argv[2] || 'http://localhost:3001'
-const VERSION = process.env.VERSION || '0.1.19'
+const VERSION = process.env.VERSION || '0.1.20'
 const PLATFORM = process.env.PLATFORM || 'win32'
 const INTERVAL_MS = 1000 // 1 second
 

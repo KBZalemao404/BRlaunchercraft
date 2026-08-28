@@ -43,7 +43,7 @@ export default function SplashScreen({ onReady }: { onReady: () => void }) {
       // Step 3: Update check
       updateStep(2, 'active')
       try {
-        const res = await fetch(`${SERVER_URL}/api/update?current=0.1.19`, { signal: AbortSignal.timeout(4000) })
+        const res = await fetch(`${SERVER_URL}/api/update?current=0.1.20`, { signal: AbortSignal.timeout(4000) })
         if (res.ok) updateStep(2, 'done')
         else updateStep(2, 'done') // Non-critical
       } catch { updateStep(2, 'done') } // Non-critical
@@ -125,7 +125,7 @@ export default function SplashScreen({ onReady }: { onReady: () => void }) {
         position: 'relative', zIndex: 1,
         animation: 'splashTextIn 0.6s 0.4s cubic-bezier(0.16,1,0.3,1) both'
       }}>
-        Java Edition · v0.1.19
+        Java Edition · v0.1.20
       </p>
 
       {/* Loading steps */}

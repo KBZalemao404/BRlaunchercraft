@@ -100,19 +100,19 @@ export default function AIPage({ apiKey, onSaveApiKey, systemInfo, javaVersion, 
 
         <div className="glass-card" style={{ padding: '24px' }}>
           <h3 style={{ color: 'var(--text-primary)', margin: '0 0 16px', fontSize: '16px' }}>
-            ⚙️ Configurar OpenAI API Key
+            ⚙️ Configurar OpenRouter API Key
           </h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
-            Para usar o Buffy, você precisa de uma API key da OpenAI.
-            Obtenha em: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener"
-              style={{ color: 'var(--accent)', textDecoration: 'none' }}>platform.openai.com/api-keys</a>
+            Para usar o Buffy, você precisa de uma API key do OpenRouter.
+            Obtenha em: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener"
+              style={{ color: 'var(--accent)', textDecoration: 'none' }}>openrouter.ai/keys</a>
           </p>
 
           <input
             type="password"
             value={keyInput}
             onChange={e => setKeyInput(e.target.value)}
-            placeholder="sk-..."
+            placeholder="sk-or-v1-..."
             style={{
               width: '100%', padding: '12px 16px', borderRadius: '10px',
               border: '1px solid var(--border)', background: 'var(--bg-elevated)',
@@ -121,6 +121,29 @@ export default function AIPage({ apiKey, onSaveApiKey, systemInfo, javaVersion, 
             }}
             onKeyDown={e => e.key === 'Enter' && handleSaveKey()}
           />
+
+          <p style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '12px' }}>
+            💡 Modelos gratuitos disponíveis no OpenRouter:
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+            {[
+              { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B' },
+              { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B' },
+              { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B' },
+              { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B' },
+            ].map(m => (
+              <div key={m.id} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '8px 12px', borderRadius: '8px',
+                background: 'rgba(0,232,123,0.05)', border: '1px solid rgba(0,232,123,0.1)',
+                fontSize: '12px', color: 'var(--text-secondary)'
+              }}>
+                <span style={{ color: 'var(--accent)' }}>🟢</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{m.name}</span>
+                <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--accent)' }}>GRÁTIS</span>
+              </div>
+            ))}
+          </div>
 
           <button
             onClick={handleSaveKey}

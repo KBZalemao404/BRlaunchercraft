@@ -2,7 +2,6 @@ import { EventEmitter } from 'events'
 import * as https from 'https'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -14,14 +13,29 @@ interface ChatResponse {
   error?: string
 }
 
+/** Models available on OpenRouter */
+const AVAILABLE_MODELS = [
+  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Grátis)', free: true },
+  { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Grátis)', free: true },
+  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Grátis)', free: true },
+  { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Grátis)', free: true },
+  { id: 'openrouter/autoswitch', name: 'Auto-Select (Melhor)', free: false },
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false },
+  { id: 'google/gemini-flash-1.5', name: 'Gemini Flash 1.5', free: false },
+]
+
+const OPENROUTER_BASE = 'openrouter.ai'
+const OPENROUTER_PATH = '/api/v1/chat/completions'
+
 /**
- * AI Assistant — powered by OpenAI API.
+ * AI Assistant — powered by OpenRouter API.
  * Acts as a friendly, technical companion for the Minecraft Launcher.
  * Knows about Java, Minecraft, mods, server issues, and everything in the project.
  */
 export class AIAssistant extends EventEmitter {
   private apiKey: string = ''
-  private model: string = 'gpt-4o-mini'
+  private model: string = 'google/gemma-2-9b-it:free'
   private conversationHistory: ChatMessage[] = []
   private systemPrompt: string = ''
   private maxHistory = 40
@@ -77,7 +91,7 @@ export class AIAssistant extends EventEmitter {
       if (fs.existsSync(settingsPath)) {
         const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'))
         this.apiKey = data.apiKey || ''
-        this.model = data.model || 'gpt-4o-mini'
+        this.model = data.model || 'google/gemma-2-9b-it:free'
       }
     } catch {}
   }
@@ -93,11 +107,12 @@ export class AIAssistant extends EventEmitter {
 
   getApiKey(): string { return this.apiKey }
   getModel(): string { return this.model }
-
   isConfigured(): boolean { return !!this.apiKey }
 
+  static getAvailableModels() { return AVAILABLE_MODELS }
+
   /**
-   * Send a message and get a response from the AI.
+   * Send a message and get a response from the AI via OpenRouter.
    */
   async chat(userMessage: string, context?: {
     javaPath?: string
@@ -108,7 +123,7 @@ export class AIAssistant extends EventEmitter {
     errorLogs?: string[]
   }): Promise<ChatResponse> {
     if (!this.apiKey) {
-      return { content: '', error: 'API key não configurada. Vá em Configurações → AI Assistant para configurar.' }
+      return { content: '', error: 'API key não configurada. Vá em Configurações → AI Assistant para configurar sua key do OpenRouter.' }
     }
 
     // Build context-aware message
@@ -125,10 +140,8 @@ export class AIAssistant extends EventEmitter {
       }
     }
 
-    // Add user message to history
     this.conversationHistory.push({ role: 'user', content: fullMessage })
 
-    // Trim history if too long
     if (this.conversationHistory.length > this.maxHistory) {
       this.conversationHistory = this.conversationHistory.slice(-this.maxHistory)
     }
@@ -139,10 +152,8 @@ export class AIAssistant extends EventEmitter {
     ]
 
     try {
-      const response = await this.callOpenAI(messages)
+      const response = await this.callOpenRouter(messages)
       if (response.error) return response
-
-      // Add assistant response to history
       this.conversationHistory.push({ role: 'assistant', content: response.content })
       return response
     } catch (err: any) {
@@ -150,24 +161,15 @@ export class AIAssistant extends EventEmitter {
     }
   }
 
-  /**
-   * Quick diagnosis — analyze error logs and give a summary
-   */
   async diagnose(errorLogs: string[]): Promise<string> {
     if (!this.apiKey) return 'API key não configurada para diagnóstico.'
-
     const prompt = `Analise estes logs de erro do Minecraft e forneça um diagnóstico técnico conciso com causa e solução:\n\n${errorLogs.join('\n')}`
-
     const response = await this.chat(prompt)
     return response.error || response.content
   }
 
-  /**
-   * Suggest optimal JVM args based on system
-   */
   async suggestJvmArgs(systemInfo: any, mcVersion: string): Promise<string> {
     if (!this.apiKey) return 'API key não configurada.'
-
     const prompt = `Sugira os melhores JVM args para Minecraft ${mcVersion} com este sistema:
 - RAM: ${systemInfo.totalMemory}GB
 - CPUs: ${systemInfo.cpus}
@@ -175,7 +177,6 @@ export class AIAssistant extends EventEmitter {
 - Livre: ${systemInfo.freeMemory}GB
 
 Forneça apenas os args JVM (sem -Xms/-Xmx) com explicações curtas.`
-
     const response = await this.chat(prompt)
     return response.error || response.content
   }
@@ -184,23 +185,24 @@ Forneça apenas os args JVM (sem -Xms/-Xmx) com explicações curtas.`
     this.conversationHistory = []
   }
 
-  private callOpenAI(messages: ChatMessage[]): Promise<ChatResponse> {
+  private callOpenRouter(messages: ChatMessage[]): Promise<ChatResponse> {
     return new Promise((resolve, reject) => {
       const body = JSON.stringify({
         model: this.model,
         messages,
         temperature: 0.7,
         max_tokens: 1500,
-        stream: false
       })
 
       const req = https.request({
-        hostname: 'api.openai.com',
-        path: '/v1/chat/completions',
+        hostname: OPENROUTER_BASE,
+        path: OPENROUTER_PATH,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://github.com/KBZalemao404/BRlaunchercraft',
+          'X-Title': 'Minecraft Launcher — Buffy AI',
           'Content-Length': Buffer.byteLength(body).toString()
         },
         timeout: 30000
@@ -210,19 +212,27 @@ Forneça apenas os args JVM (sem -Xms/-Xmx) com explicações curtas.`
         res.on('end', () => {
           try {
             if (res.statusCode === 401) {
-              resolve({ content: '', error: 'API key inválida. Verifique em Configurações.' })
+              resolve({ content: '', error: 'API key inválida. Verifique sua key do OpenRouter em Configurações.' })
               return
             }
             if (res.statusCode === 429) {
-              resolve({ content: '', error: 'Limite de requests atingido. Aguarde um momento.' })
+              resolve({ content: '', error: 'Limite de requests atingido. Aguarde um momento ou troque de modelo.' })
+              return
+            }
+            if (res.statusCode === 402) {
+              resolve({ content: '', error: 'Créditos insuficientes no OpenRouter. Use um modelo gratuito ou adicione créditos.' })
               return
             }
             if (res.statusCode !== 200) {
-              resolve({ content: '', error: `OpenAI API erro ${res.statusCode}: ${data.substring(0, 200)}` })
+              resolve({ content: '', error: `OpenRouter erro ${res.statusCode}: ${data.substring(0, 300)}` })
               return
             }
             const json = JSON.parse(data)
             const content = json.choices?.[0]?.message?.content || ''
+            if (!content) {
+              resolve({ content: '', error: 'Resposta vazia do modelo. Tente outro modelo.' })
+              return
+            }
             resolve({ content })
           } catch (err: any) {
             resolve({ content: '', error: `Erro ao processar resposta: ${err.message}` })
@@ -231,7 +241,7 @@ Forneça apenas os args JVM (sem -Xms/-Xmx) com explicações curtas.`
       })
 
       req.on('error', reject)
-      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')) })
+      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout — servidor não respondeu')) })
       req.write(body)
       req.end()
     })
