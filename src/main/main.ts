@@ -10,7 +10,7 @@ import { VersionManager } from './minecraft/versions'
 import { InstanceManager } from './instances/manager'
 import { AuthManager } from './auth/manager'
 import { ProcessManager } from './process/manager'
-import { AIAssistant } from './ai/assistant'
+import { OpenRouterService } from './ai/openrouter'
 import { JavaAutoDownloader } from './java/autodownloader'
 import { ModManager } from './mods/manager'
 import { LauncherUpdater } from './updater'
@@ -59,7 +59,7 @@ function getSettings(): AppSettings {
     verifyFiles: saved.verifyFiles !== 'false', downloadDir: saved.downloadDir || path.join(appDataPath, 'downloads'),
     maxConcurrentDownloads: parseInt(saved.maxConcurrentDownloads) || 4, theme: 'dark',
     language: saved.language || 'pt-BR', gameDir: saved.gameDir || path.join(appDataPath, 'instances'),
-    launcherVersion: '0.1.20',
+    launcherVersion: '0.1.21',
     autoStart: saved.autoStart === 'true',
     startMinimized: saved.startMinimized === 'true',
     minimizeToTray: saved.minimizeToTray === 'true'
@@ -277,7 +277,7 @@ ipcMain.handle('news:fetch', async () => {
 
 // Diagnostics
 ipcMain.handle('diagnostics:export', () => JSON.stringify({
-  version: '0.1.20', timestamp: new Date().toISOString(), platform: process.platform,
+  version: '0.1.21', timestamp: new Date().toISOString(), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, electronVersion: process.versions.electron,
   javaInstalls: javaManager.detectAll().length,
   installedVersions: Object.keys(storage.getInstalledVersions()),
@@ -303,36 +303,62 @@ ipcMain.handle('update:state', () => updater.getState())
 // Updater state is already forwarded via sendToRenderer inside the updater class
 
 // ═══════ AI ASSISTANT ═══════
-const aiAssistant = new AIAssistant(appDataPath)
+const aiService = new OpenRouterService(appDataPath)
 const javaDownloader = new JavaAutoDownloader(appDataPath)
 
-aiAssistant.on('progress', (d: any) => sendToRenderer('ai:progress', d))
+aiService.on('progress', (d: any) => sendToRenderer('ai:progress', d))
 javaDownloader.on('progress', (d: any) => sendToRenderer('java:progress', d))
 javaDownloader.on('log', (msg: string) => sendToRenderer('java:log', msg))
 javaDownloader.on('error', (msg: string) => sendToRenderer('java:log', `ERROR: ${msg}`))
 
+// AI Chat
 ipcMain.handle('ai:chat', async (_, msg: string, ctx?: any) => {
-  return await aiAssistant.chat(msg, ctx)
+  return await aiService.chat(msg, ctx)
 })
 ipcMain.handle('ai:diagnose', async (_, logs: string[]) => {
-  return await aiAssistant.diagnose(logs)
+  return await aiService.diagnose(logs)
 })
 ipcMain.handle('ai:suggest-jvm', async (_, sys: any, ver: string) => {
-  return await aiAssistant.suggestJvmArgs(sys, ver)
+  return await aiService.suggestJvmArgs(sys, ver)
 })
-ipcMain.handle('ai:settings', () => ({
-  apiKey: aiAssistant.getApiKey() ? '***configured***' : '',
-  model: aiAssistant.getModel(),
-  models: AIAssistant.getAvailableModels()
-}))
-ipcMain.handle('ai:settings-save', (_, key: string, model?: string) => {
-  aiAssistant.saveApiKey(key, model)
+ipcMain.handle('ai:fix-error', async (_, err: string) => {
+  return await aiService.fixError(err)
+})
+ipcMain.handle('ai:clear-history', () => { aiService.clearHistory(); return true })
+
+// AI Settings
+ipcMain.handle('ai:settings', () => {
+  const s = aiService.getSettings()
+  return { apiKey: s.apiKey ? '***configured***' : '', model: s.model, temperature: s.temperature, maxTokens: s.maxTokens, systemPrompt: s.systemPrompt }
+})
+ipcMain.handle('ai:settings-update', (_, updates: any) => {
+  const patched: any = {}
+  if (updates.apiKey) patched.apiKey = updates.apiKey
+  if (updates.model) patched.model = updates.model
+  if (updates.temperature !== undefined) patched.temperature = updates.temperature
+  if (updates.maxTokens !== undefined) patched.maxTokens = updates.maxTokens
+  if (updates.systemPrompt !== undefined) patched.systemPrompt = updates.systemPrompt
+  aiService.updateSettings(patched)
   return true
 })
-ipcMain.handle('ai:clear-history', () => {
-  aiAssistant.clearHistory()
-  return true
+ipcMain.handle('ai:models', () => OpenRouterService.getModels())
+
+// AI Conversations
+ipcMain.handle('ai:conversations', () => {
+  return aiService.getConversations().map(c => ({ id: c.id, title: c.title, model: c.model, createdAt: c.createdAt, updatedAt: c.updatedAt, messageCount: c.messages.length }))
 })
+ipcMain.handle('ai:conv-new', () => { aiService.createConversation(); return true })
+ipcMain.handle('ai:conv-select', (_, id: string) => {
+  aiService.selectConversation(id)
+  const conv = aiService.getCurrentConversation()
+  return conv?.messages || []
+})
+ipcMain.handle('ai:conv-delete', (_, id: string) => { aiService.deleteConversation(id); return true })
+ipcMain.handle('ai:conv-rename', (_, id: string, title: string) => { aiService.renameConversation(id, title); return true })
+
+// AI Usage
+ipcMain.handle('ai:usage', () => aiService.getUsageStats())
+ipcMain.handle('ai:usage-reset', () => { aiService.resetUsageStats(); return true })
 
 // Java auto-download
 ipcMain.handle('java:auto-download', async (_, version: number) => {
