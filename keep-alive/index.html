@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Launcher — Server Keep-Alive</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 600px;
+      width: 90%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 1.5rem;
+      color: #4ade80;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+    .status-card {
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .status-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      vertical-align: middle;
+      animation: pulse 2s infinite;
+    }
+    .status-dot.online { background: #4ade80; box-shadow: 0 0 12px #4ade80; }
+    .status-dot.offline { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
+    .status-dot.checking { background: #facc15; box-shadow: 0 0 12px #facc15; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .stat {
+      background: #111;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #4ade80;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+    .log {
+      background: #111;
+      border-radius: 8px;
+      padding: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      color: #888;
+      text-align: left;
+    }
+    .log-entry { margin: 0.2rem 0; }
+    .log-entry.success { color: #4ade80; }
+    .log-entry.error { color: #ef4444; }
+    .log-entry.info { color: #60a5fa; }
+    .controls {
+      margin-top: 1rem;
+    }
+    button {
+      background: #16a34a;
+      color: white;
+      border: none;
+      padding: 0.6rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      margin: 0 0.25rem;
+    }
+    button:hover { background: #15803d; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    button.secondary { background: #333; }
+    button.secondary:hover { background: #444; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🟢 Server Keep-Alive</h1>
+    <p class="subtitle">Minecraft Launcher — Ping automático para manter o servidor online</p>
+
+    <div class="status-card">
+      <div id="status" style="font-size:1.2rem">
+        <span class="status-dot checking" id="dot"></span>
+        <span id="statusText">Verificando...</span>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="pings">0</div>
+          <div class="stat-label">Pings enviados</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="latency">-</div>
+          <div class="stat-label">Latência</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="errors">0</div>
+          <div class="stat-label">Erros</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <div class="controls">
+      <button onclick="startPing()" id="startBtn">▶ Iniciar</button>
+      <button class="danger" onclick="stopPing()" id="stopBtn">⏹ Parar</button>
+      <button class="secondary" onclick="clearLog()">🗑 Limpar Log</button>
+    </div>
+  </div>
+
+  <script>
+    const SERVER = 'https://minecraft-launcher-updates.vercel.app';
+    const INTERVAL = 30000; // 30 seconds
+    let intervalId = null;
+    let pingCount = parseInt(localStorage.getItem('pingCount') || '0');
+    let errorCount = parseInt(localStorage.getItem('errorCount') || '0');
+
+    document.getElementById('pings').textContent = pingCount;
+    document.getElementById('errors').textContent = errorCount;
+
+    function addLog(msg, type = 'info') {
+      const log = document.getElementById('log');
+      const time = new Date().toLocaleTimeString('pt-BR');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${time}] ${msg}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+      // Keep max 100 entries
+      while (log.children.length > 100) log.removeChild(log.firstChild);
+    }
+
+    async function ping() {
+      const dot = document.getElementById('dot');
+      const statusText = document.getElementById('statusText');
+      dot.className = 'status-dot checking';
+      statusText.textContent = 'Enviando ping...';
+
+      const start = Date.now();
+      try {
+        const res = await fetch(`${SERVER}/api/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: 'keep-alive', platform: 'github-pages' })
+        });
+        const latency = Date.now() - start;
+        const data = await res.json();
+
+        pingCount++;
+        localStorage.setItem('pingCount', pingCount);
+        document.getElementById('pings').textContent = pingCount;
+        document.getElementById('latency').textContent = `${latency}ms`;
+        dot.className = 'status-dot online';
+        statusText.textContent = `Online — v${data.latestVersion || '?'} | ${data.activeClients || 0} clientes`;
+        addLog(`Ping #${pingCount}: ${latency}ms | v${data.latestVersion || '?'} | ${data.activeClients || 0} clients`, 'success');
+      } catch (err) {
+        errorCount++;
+        localStorage.setItem('errorCount', errorCount);
+        document.getElementById('errors').textContent = errorCount;
+        dot.className = 'status-dot offline';
+        statusText.textContent = `Offline: ${err.message}`;
+        addLog(`Erro #${errorCount}: ${err.message}`, 'error');
+      }
+    }
+
+    function startPing() {
+      if (intervalId) return;
+      addLog('Keep-alive iniciado (30s interval)', 'info');
+      ping();
+      intervalId = setInterval(ping, INTERVAL);
+    }
+
+    function stopPing() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+        addLog('Keep-alive parado', 'info');
+        document.getElementById('dot').className = 'status-dot offline';
+        document.getElementById('statusText').textContent = 'Parado';
+      }
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+    }
+
+    // Auto-start on load
+    startPing();
+  </script>
+</body>
+</html>

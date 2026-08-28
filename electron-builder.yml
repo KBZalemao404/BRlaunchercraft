@@ -10,6 +10,7 @@ directories:
 files:
   - dist/**/*
   - assets/**/*
+  - keep-alive/**/*
 
 win:
   target:
@@ -30,6 +31,7 @@ nsis:
   uninstallerIcon: assets/icon.ico
   installerHeaderIcon: assets/icon.ico
   artifactName: "MinecraftLauncherSetup-${version}.${ext}"
+  include: build/installer-custom.nsh
 
 linux:
   target:

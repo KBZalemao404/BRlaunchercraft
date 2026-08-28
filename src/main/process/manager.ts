@@ -142,7 +142,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.14`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.15`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       '--username', authAccount?.username || 'Player', '--version', instance.versionId,
       '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',

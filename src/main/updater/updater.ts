@@ -183,8 +183,12 @@ export class LauncherUpdater {
 
   // ── Heartbeat (keep server alive) ──
 
+  private heartbeatFailCount = 0
+  private lastHeartbeatSuccess = false
+
   startHeartbeat(intervalMs = HEARTBEAT_INTERVAL) {
     this.stopHeartbeat()
+    this.heartbeatFailCount = 0
     const send = async () => {
       try {
         const url = `${UPDATE_SERVER_URL}/api/heartbeat`
@@ -193,15 +197,45 @@ export class LauncherUpdater {
         const client = parsedUrl.protocol === 'https:' ? https : http
         const req = client.request(parsedUrl, {
           method: 'POST',
+          timeout: 10000,
           headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body).toString() }
         })
-        req.on('error', () => {})
+        const onResponse = (res: any) => {
+          if (res.statusCode === 200) {
+            this.heartbeatFailCount = 0
+            this.lastHeartbeatSuccess = true
+          } else {
+            this.heartbeatFailCount++
+          }
+          res.resume()
+        }
+        req.on('response', onResponse)
+        req.on('error', () => { this.heartbeatFailCount++ })
+        req.on('timeout', () => { req.destroy(); this.heartbeatFailCount++ })
         req.write(body)
         req.end()
+
+        // If server is cold (3+ failures), try with exponential backoff
+        if (this.heartbeatFailCount >= 3) {
+          this.logger.warn('updater', `Server unreachable (${this.heartbeatFailCount} failures). Retrying in ${Math.min(60000, intervalMs * Math.pow(2, this.heartbeatFailCount - 2))}ms`)
+        }
       } catch {}
     }
     setTimeout(send, 2_000)
+    // Adaptive interval: faster if server is cold, normal if warm
+    const adaptiveInterval = () => {
+      if (this.heartbeatFailCount >= 5) return 10_000  // 10s when server is cold
+      if (this.heartbeatFailCount >= 2) return 15_000  // 15s when struggling
+      return intervalMs  // Normal interval (30s) when server is warm
+    }
     this.heartbeatInterval = setInterval(send, intervalMs)
+    // Re-evaluate interval every 30 seconds
+    setInterval(() => {
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval)
+        this.heartbeatInterval = setInterval(send, adaptiveInterval())
+      }
+    }, 30_000)
   }
 
   stopHeartbeat() {
