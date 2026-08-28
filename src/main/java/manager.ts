@@ -5,7 +5,7 @@ import * as os from 'os'
 import { JavaInstall } from '../../shared/types'
 
 const JAVA_MIN = 8
-const JAVA_MAX = 21
+const JAVA_MAX = 99 // No upper limit — let the game decide compatibility
 
 export class JavaManager {
   private detected: JavaInstall[] = []
@@ -59,7 +59,10 @@ export class JavaManager {
         path.join(local, 'Programs', 'Java'),
         path.join(pf, 'Eclipse Adoptium'), path.join(pf, 'Eclipse Foundation'),
         path.join(pf, 'Microsoft'), path.join(pf, 'BellSoft'), path.join(pf, 'Zulu'),
-        path.join(os.homedir(), 'scoop', 'apps', 'openjdk')
+        path.join(os.homedir(), 'scoop', 'apps', 'openjdk'),
+        path.join(pf, 'Amazon'), path.join(pf, 'GraalVM'),
+        path.join(pf, 'SAP'), path.join(pf, 'Semeru'),
+        path.join(local, 'Java'), path.join(local, 'Eclipse Adoptium')
       )
     } else if (platform === 'darwin') {
       paths.push(
@@ -121,7 +124,7 @@ export class JavaManager {
 
     return {
       path: javaPath, version: versionStr, majorVersion, architecture, vendor,
-      compatible: majorVersion >= JAVA_MIN && majorVersion <= JAVA_MAX, verified: true
+      compatible: majorVersion >= JAVA_MIN, verified: true
     }
   }
 

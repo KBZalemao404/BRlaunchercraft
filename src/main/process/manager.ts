@@ -39,10 +39,12 @@ export class ProcessManager extends EventEmitter {
     const gamePath = allSettings.gameDir || path.join(this.storage.getBasePath(), 'instances')
     const minecraft = new MinecraftFolder(gamePath)
 
+    // Read version JSON early (needed for Java check + launch)
+    const versionJson = fs.existsSync(installed.jsonPath) ? JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8')) : {}
+
     // Find Java
     let javaPath = instance.javaPath || allSettings.javaPath || ''
     if (!javaPath) {
-      const versionJson = fs.existsSync(installed.jsonPath) ? JSON.parse(fs.readFileSync(installed.jsonPath, 'utf8')) : {}
       const best = this.javaManager.findBest(versionJson, instance.versionId)
       if (best) javaPath = best.path
     }
@@ -68,7 +70,7 @@ export class ProcessManager extends EventEmitter {
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java major version: ${javaMajor}` })
 
     // Validate Java version against Minecraft version requirement
-    const requiredJava = this.getRequiredJavaVersion(instance.versionId)
+    const requiredJava = this.getRequiredJavaVersion(instance.versionId, versionJson)
     if (javaMajor < requiredJava) {
       const versionName = instance.versionId
       const errorMsg = `Java ${javaMajor} encontrado, mas ${versionName} precisa de Java ${requiredJava}+!\n\n` +
@@ -198,7 +200,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.16`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.17`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       ...gameArgs.map(resolveVar)
     ]
@@ -293,29 +295,38 @@ export class ProcessManager extends EventEmitter {
   private getJavaMajor(javaPath: string): number {
     try {
       const { execSync } = require('child_process')
-      const output = execSync(`"${javaPath}" -version 2>&1`, { timeout: 5000, encoding: 'utf8' })
+      const output = execSync(`"${javaPath}" -version 2>&1`, { timeout: 10000, encoding: 'utf8' })
+      // Match patterns like: java version "21.0.1" or openjdk version "17.0.2"
       const match = output.match(/version "([\d.]+)/)
       if (match) {
         const parts = match[1].split('.')
-        return parseInt(parts[0]) || 17
+        const major = parseInt(parts[0]) || 0
+        this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java detected: ${javaPath} → version ${match[1]} (major: ${major})` })
+        return major
       }
-    } catch {}
+    } catch (e: any) {
+      this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Failed to detect Java version at ${javaPath}: ${e.message}` })
+    }
     return 17 // default to 17
   }
 
-  private getRequiredJavaVersion(versionId: string): number {
-    // Minecraft Java version requirements:
-    // 1.20.5+  → Java 21+
-    // 1.18+    → Java 17+
-    // 1.17+    → Java 16+
-    // Earlier  → Java 8+
+  private getRequiredJavaVersion(versionId: string, versionJson?: any): number {
+    // PRIORITY: Read from version JSON javaVersion.majorVersion (most accurate)
+    if (versionJson?.javaVersion?.majorVersion) {
+      return versionJson.javaVersion.majorVersion
+    }
+    // Fallback: guess from version ID
     const match = versionId.match(/^(\d+)\.(\d+)(?:\.(\d+))?/)
     if (!match) return 8
     const major = parseInt(match[1])
     const minor = parseInt(match[2])
     const patch = parseInt(match[3] || '0')
-    if (major >= 2) return 8 // future major versions
-    if (minor >= 21) return 21 // 1.21.x+ always needs Java 21+
+    // New versioning: 26.x, 25.x, etc. — read from JSON or default to 21+
+    if (major >= 2) {
+      // MC 26.x+ uses new versioning, check JSON or default to Java 25
+      return 25
+    }
+    if (minor >= 21) return 21 // 1.21.x+ needs Java 21+
     if (minor === 20 && patch >= 5) return 21 // 1.20.5+ needs Java 21+
     if (minor >= 18) return 17 // 1.18-1.20.4 needs Java 17+
     if (minor >= 17) return 16 // 1.17.x needs Java 16+
