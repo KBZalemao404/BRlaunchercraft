@@ -66,20 +66,38 @@ export class ProcessManager extends EventEmitter {
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Iniciando Minecraft ${instance.versionId}` })
 
     // Detect Java major version to filter incompatible JVM args
-    const javaMajor = this.getJavaMajor(javaPath)
+    let javaMajor = this.getJavaMajor(javaPath)
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java major version: ${javaMajor}` })
 
     // Validate Java version against Minecraft version requirement
     const requiredJava = this.getRequiredJavaVersion(instance.versionId, versionJson)
     if (javaMajor < requiredJava) {
-      const versionName = instance.versionId
-      const errorMsg = `Java ${javaMajor} encontrado, mas ${versionName} precisa de Java ${requiredJava}+!\n\n` +
-        `Java atual: ${javaPath}\n` +
-        `Versão necessária: Java ${requiredJava}\n\n` +
-        `Baixe Java ${requiredJava} em:\n` +
-        `https://adoptium.net/temurin/releases/?version=${requiredJava}`
-      this.emit('log', { timestamp: new Date().toISOString(), level: 'ERROR', source: 'launcher', message: `Java incompatível: ${javaMajor} < ${requiredJava}` })
-      throw new Error(errorMsg)
+      this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Java ${javaMajor} found but ${instance.versionId} needs Java ${requiredJava}+. Auto-downloading...` })
+      // Try auto-download
+      try {
+        const { JavaAutoDownloader } = require('./java/autodownloader')
+        const downloader = new JavaAutoDownloader(require('electron').app.getPath('userData'))
+        this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Auto-downloading Java ${requiredJava} from Adoptium...` })
+        const downloaded = await downloader.downloadAndInstall(requiredJava, (msg: string, pct: number) => {
+          this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java download: ${msg} (${pct}%)` })
+        })
+        if (downloaded) {
+          javaPath = downloaded
+          javaMajor = this.getJavaMajor(javaPath)
+          this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java ${javaMajor} installed at ${javaPath}` })
+        }
+      } catch (dlErr: any) {
+        this.emit('log', { timestamp: new Date().toISOString(), level: 'WARN', source: 'launcher', message: `Auto-download failed: ${dlErr.message}` })
+      }
+      // Re-check after download attempt
+      if (javaMajor < requiredJava) {
+        const errorMsg = `Java ${javaMajor} encontrado, mas ${instance.versionId} precisa de Java ${requiredJava}+!\n\n` +
+          `Java atual: ${javaPath}\n` +
+          `Versão necessária: Java ${requiredJava}\n\n` +
+          `Baixe Java ${requiredJava} em:\n` +
+          `https://adoptium.net/temurin/releases/?version=${requiredJava}`
+        throw new Error(errorMsg)
+      }
     }
 
     // Ensure natives are extracted (critical for pre-1.13 versions like 1.7.10)
@@ -200,7 +218,7 @@ export class ProcessManager extends EventEmitter {
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.17`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.18`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
       ...gameArgs.map(resolveVar)
     ]

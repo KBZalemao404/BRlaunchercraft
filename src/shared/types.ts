@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 
 // ── Navigation ──
-export type Page = 'home' | 'login' | 'versions' | 'instances' | 'mods' | 'downloads' | 'console' | 'settings' | 'news' | 'profile'
+export type Page = 'home' | 'login' | 'versions' | 'instances' | 'mods' | 'downloads' | 'console' | 'settings' | 'news' | 'profile' | 'ai'
 
 // ── Authentication ──
 export interface AuthAccount {

@@ -10,6 +10,8 @@ import { VersionManager } from './minecraft/versions'
 import { InstanceManager } from './instances/manager'
 import { AuthManager } from './auth/manager'
 import { ProcessManager } from './process/manager'
+import { AIAssistant } from './ai/assistant'
+import { JavaAutoDownloader } from './java/autodownloader'
 import { ModManager } from './mods/manager'
 import { LauncherUpdater } from './updater'
 import { ProfileManager } from './profiles/manager'
@@ -57,7 +59,7 @@ function getSettings(): AppSettings {
     verifyFiles: saved.verifyFiles !== 'false', downloadDir: saved.downloadDir || path.join(appDataPath, 'downloads'),
     maxConcurrentDownloads: parseInt(saved.maxConcurrentDownloads) || 4, theme: 'dark',
     language: saved.language || 'pt-BR', gameDir: saved.gameDir || path.join(appDataPath, 'instances'),
-    launcherVersion: '0.1.17',
+    launcherVersion: '0.1.18',
     autoStart: saved.autoStart === 'true',
     startMinimized: saved.startMinimized === 'true',
     minimizeToTray: saved.minimizeToTray === 'true'
@@ -275,7 +277,7 @@ ipcMain.handle('news:fetch', async () => {
 
 // Diagnostics
 ipcMain.handle('diagnostics:export', () => JSON.stringify({
-  version: '0.1.17', timestamp: new Date().toISOString(), platform: process.platform,
+  version: '0.1.18', timestamp: new Date().toISOString(), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, electronVersion: process.versions.electron,
   javaInstalls: javaManager.detectAll().length,
   installedVersions: Object.keys(storage.getInstalledVersions()),
@@ -299,6 +301,51 @@ ipcMain.handle('update:cancel', () => {
 })
 ipcMain.handle('update:state', () => updater.getState())
 // Updater state is already forwarded via sendToRenderer inside the updater class
+
+// ═══════ AI ASSISTANT ═══════
+const aiAssistant = new AIAssistant(appDataPath)
+const javaDownloader = new JavaAutoDownloader(appDataPath)
+
+aiAssistant.on('progress', (d: any) => sendToRenderer('ai:progress', d))
+javaDownloader.on('progress', (d: any) => sendToRenderer('java:progress', d))
+javaDownloader.on('log', (msg: string) => sendToRenderer('java:log', msg))
+javaDownloader.on('error', (msg: string) => sendToRenderer('java:log', `ERROR: ${msg}`))
+
+ipcMain.handle('ai:chat', async (_, msg: string, ctx?: any) => {
+  return await aiAssistant.chat(msg, ctx)
+})
+ipcMain.handle('ai:diagnose', async (_, logs: string[]) => {
+  return await aiAssistant.diagnose(logs)
+})
+ipcMain.handle('ai:suggest-jvm', async (_, sys: any, ver: string) => {
+  return await aiAssistant.suggestJvmArgs(sys, ver)
+})
+ipcMain.handle('ai:settings', () => ({
+  apiKey: aiAssistant.getApiKey() ? '***configured***' : '',
+  model: aiAssistant.getModel()
+}))
+ipcMain.handle('ai:settings-save', (_, key: string, model?: string) => {
+  aiAssistant.saveApiKey(key, model)
+  return true
+})
+ipcMain.handle('ai:clear-history', () => {
+  aiAssistant.clearHistory()
+  return true
+})
+
+// Java auto-download
+ipcMain.handle('java:auto-download', async (_, version: number) => {
+  return await javaDownloader.downloadAndInstall(version, (msg, pct) => {
+    sendToRenderer('java:progress', { message: msg, percent: pct })
+  })
+})
+ipcMain.handle('java:ensure', async (_, version: number) => {
+  const allSettings = storage.getAllSettings()
+  return await javaDownloader.ensureJava(version, allSettings.javaPath || '')
+})
+ipcMain.handle('java:list-managed', () => {
+  return javaDownloader.listManaged()
+})
 
 // ═══════ AUTO-START / SYSTEM TRAY ═══════
 ipcMain.handle('autostart:get', () => {

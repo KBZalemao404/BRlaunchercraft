@@ -113,6 +113,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Diagnostics
   exportDiagnostics: () => ipcRenderer.invoke('diagnostics:export'),
 
+  // AI Assistant
+  aiChat: (msg: string, ctx?: any) => ipcRenderer.invoke('ai:chat', msg, ctx),
+  aiDiagnose: (logs: string[]) => ipcRenderer.invoke('ai:diagnose', logs),
+  aiSuggestJvm: (sys: any, ver: string) => ipcRenderer.invoke('ai:suggest-jvm', sys, ver),
+  aiGetSettings: () => ipcRenderer.invoke('ai:settings'),
+  aiSaveSettings: (key: string, model?: string) => ipcRenderer.invoke('ai:settings-save', key, model),
+  aiClearHistory: () => ipcRenderer.invoke('ai:clear-history'),
+  onAiProgress: (cb: Function) => ipcRenderer.on('ai:progress', (_, d) => cb(d)),
+
+  // Java Auto-Download
+  javaAutoDownload: (ver: number) => ipcRenderer.invoke('java:auto-download', ver),
+  javaEnsure: (ver: number) => ipcRenderer.invoke('java:ensure', ver),
+  javaListManaged: () => ipcRenderer.invoke('java:list-managed'),
+  onJavaProgress: (cb: Function) => ipcRenderer.on('java:progress', (_, d) => cb(d)),
+  onJavaLog: (cb: Function) => ipcRenderer.on('java:log', (_, d) => cb(d)),
+
   // Cleanup
   removeAllListeners: (ch: string) => ipcRenderer.removeAllListeners(ch)
 })

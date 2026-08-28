@@ -17,6 +17,7 @@ import DownloadsPage from './pages/DownloadsPage'
 import ConsolePage from './pages/ConsolePage'
 import SettingsPage from './pages/SettingsPage'
 import ProfilePage from './pages/ProfilePage'
+import AIPage from './pages/AIPage'
 import UpdateBanner from './components/UpdateBanner'
 import SplashScreen from './components/SplashScreen'
 
@@ -116,6 +117,7 @@ export default function App() {
       case 'mods': return <ModsPage instances={instances} />
       case 'downloads': return <DownloadsPage />
       case 'console': return <ConsolePage logs={logs} />
+      case 'ai': return <AIPage apiKey={''} onSaveApiKey={(k) => window.electronAPI?.aiSaveSettings?.(k)} systemInfo={systemInfo} javaVersion={installedVersions[Object.keys(installedVersions)[0]]?.javaVersion} mcVersion={Object.keys(installedVersions)[0]} />
       case 'settings': return <SettingsPage settings={settings} systemInfo={systemInfo} onSave={handleSaveSettings} updateState={update.state} onCheckUpdate={update.checkForUpdates} onDownloadUpdate={update.downloadUpdate} onInstallUpdate={update.installUpdate} onCancelUpdate={update.cancelUpdate} />
       case 'profile': return <ProfilePage profiles={profiles} activeProfileId={activeProfileId} onSwitchProfile={handleSwitchProfile} onCreateProfile={handleCreateProfile} onDeleteProfile={handleDeleteProfile} showToast={showToast} />
       default: return null

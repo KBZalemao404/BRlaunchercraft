@@ -25,6 +25,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
     { page: 'mods', icon: '🧩', label: 'Mods', color: 'var(--purple)' },
     { page: 'downloads', icon: '⬇️', label: 'Downloads', color: 'var(--cyan)' },
     { page: 'console', icon: '📋', label: 'Logs', color: 'var(--orange)' },
+    { page: 'ai', icon: '🤖', label: 'Buffy IA', color: 'var(--cyan)' },
     { page: 'settings', icon: '⚙️', label: 'Configurações', color: 'var(--text-secondary)' },
     { page: 'profile', icon: '👤', label: 'Perfis', color: 'var(--rose)' },
   ]
@@ -126,7 +127,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
 
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <span>v{currentVersion || '0.1.17'}</span>
+          <span>v{currentVersion || '0.1.18'}</span>
           {updateAvailable && (
             <span style={{
               fontSize: '8px', fontWeight: 700, padding: '1px 5px', borderRadius: '99px',
