@@ -1,6 +1,6 @@
 {
   "name": "minecraft-launcher",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Minecraft Java Edition Launcher",
   "main": "dist/main/main.js",
   "author": "Freebuff",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@xmcl/core": "^2.10.1",
     "@xmcl/installer": "^4.2.0",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {

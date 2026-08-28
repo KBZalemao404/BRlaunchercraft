@@ -127,7 +127,7 @@ export default function Sidebar({ currentPage, onNavigate, account, instanceCoun
 
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <span>v{currentVersion || '0.1.18'}</span>
+          <span>v{currentVersion || '0.1.19'}</span>
           {updateAvailable && (
             <span style={{
               fontSize: '8px', fontWeight: 700, padding: '1px 5px', borderRadius: '99px',

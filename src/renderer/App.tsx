@@ -37,6 +37,7 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [splashDone, setSplashDone] = useState(false)
+  const [aiApiKey, setAiApiKey] = useState('')
   const update = useUpdate()
   useHeartbeat(update.state.currentVersion)
 
@@ -58,6 +59,11 @@ export default function App() {
       if (activeProf) setActiveProfileId(activeProf.id)
       if (insts?.length > 0) setSelectedInstanceId(insts[0].id)
       setupListeners()
+      // Load AI settings
+      try {
+        const aiSettings = await window.electronAPI?.aiGetSettings?.()
+        if (aiSettings?.apiKey === '***configured***') setAiApiKey('configured')
+      } catch {}
     } catch (e) { console.error('Init error:', e) } finally { setLoading(false) }
   }
 
@@ -117,7 +123,7 @@ export default function App() {
       case 'mods': return <ModsPage instances={instances} />
       case 'downloads': return <DownloadsPage />
       case 'console': return <ConsolePage logs={logs} />
-      case 'ai': return <AIPage apiKey={''} onSaveApiKey={(k) => window.electronAPI?.aiSaveSettings?.(k)} systemInfo={systemInfo} javaVersion={installedVersions[Object.keys(installedVersions)[0]]?.javaVersion} mcVersion={Object.keys(installedVersions)[0]} />
+      case 'ai': return <AIPage apiKey={aiApiKey} onSaveApiKey={(k) => { window.electronAPI?.aiSaveSettings?.(k); setAiApiKey(k) }} systemInfo={systemInfo} javaVersion={installedVersions[Object.keys(installedVersions)[0]]?.javaVersion} mcVersion={Object.keys(installedVersions)[0]} />
       case 'settings': return <SettingsPage settings={settings} systemInfo={systemInfo} onSave={handleSaveSettings} updateState={update.state} onCheckUpdate={update.checkForUpdates} onDownloadUpdate={update.downloadUpdate} onInstallUpdate={update.installUpdate} onCancelUpdate={update.cancelUpdate} />
       case 'profile': return <ProfilePage profiles={profiles} activeProfileId={activeProfileId} onSwitchProfile={handleSwitchProfile} onCreateProfile={handleCreateProfile} onDeleteProfile={handleDeleteProfile} showToast={showToast} />
       default: return null
