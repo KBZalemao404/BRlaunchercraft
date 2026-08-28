@@ -137,21 +137,96 @@ export class ProcessManager extends EventEmitter {
     }
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `JVM args: ${filtered.length} (filtered from ${versionJvmArgs.length})` })
 
+    // Build game arguments from version JSON
+    const gameArgs: string[] = []
+    // Modern format: arguments.game (array of strings and rule objects)
+    if (versionJson.arguments?.game) {
+      for (const arg of versionJson.arguments.game) {
+        if (typeof arg === 'string') {
+          gameArgs.push(arg)
+        } else if (arg.rules && arg.value) {
+          const include = this.evaluateGameRules(arg.rules)
+          if (include) {
+            const vals = Array.isArray(arg.value) ? arg.value : [arg.value]
+            gameArgs.push(...vals)
+          }
+        }
+      }
+    }
+    // Legacy format: minecraftArguments (space-separated string)
+    if (!gameArgs.length && versionJson.minecraftArguments) {
+      const parts = versionJson.minecraftArguments.split(' ')
+      for (let i = 0; i < parts.length; i++) {
+        gameArgs.push(parts[i])
+      }
+    }
+
+    // Resolve variable placeholders
+    const uuid = authAccount?.uuid || '00000000-0000-0000-0000-000000000000'
+    const uuidNoDashes = uuid.replace(/-/g, '')
+    const username = authAccount?.username || 'Player'
+    const accessToken = authAccount?.accessToken || '0'
+    const userType = authAccount?.type === 'microsoft' ? 'msa' : 'legacy'
+    const clientId = uuidNoDashes // clientId uses UUID without dashes
+    const assetsDir = path.join(rootGamePath, 'assets')
+    const gameDir = instance.gameDir
+
+    // Variable resolver for legacy minecraftArguments format
+    const resolveVar = (val: string): string => {
+      return val
+        .replace(/\$\{auth_player_name\}/g, username)
+        .replace(/\$\{auth_session\}/g, accessToken)
+        .replace(/\$\{auth_uuid\}/g, uuidNoDashes)
+        .replace(/\$\{auth_access_token\}/g, accessToken)
+        .replace(/\$\{auth_player_uuid\}/g, uuidNoDashes)
+        .replace(/\$\{user_properties\}/g, '{}')
+        .replace(/\$\{user_type\}/g, userType)
+        .replace(/\$\{version_name\}/g, instance.versionId)
+        .replace(/\$\{game_directory\}/g, gameDir)
+        .replace(/\$\{assets_root\}/g, assetsDir)
+        .replace(/\$\{assets_index_name\}/g, versionJson.assetIndex?.id || instance.versionId)
+        .replace(/\$\{clientid\}/g, clientId)
+        .replace(/\$\{auth_xuid\}/g, authAccount?.type === 'microsoft' ? 'xbox360' : '')
+        .replace(/\$\{user_type\}/g, userType)
+        .replace(/\$\{version_type\}/g, 'MinecraftLauncher')
+        .replace(/\$\{resolution_width\}/g, String(instance.resolution?.width || 854))
+        .replace(/\$\{resolution_height\}/g, String(instance.resolution?.height || 480))
+    }
+
     const args = [
       `-Xms${instance.minMemory}M`, `-Xmx${instance.maxMemory}M`,
       ...filtered,
       ...(instance.jvmArgs || []),
       `-Djava.library.path=${path.join(installed.gameDir, 'natives')}`,
-      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.15`,
+      `-Dminecraft.launcher.brand=minecraftlauncher`, `-Dminecraft.launcher.version=0.1.16`,
       '-cp', classpath, versionJson.mainClass || 'net.minecraft.client.main.Main',
-      '--username', authAccount?.username || 'Player', '--version', instance.versionId,
-      '--gameDir', instance.gameDir, '--assetsDir', rootGamePath + '/assets',
-      '--assetIndex', versionJson.assetIndex?.id || instance.versionId,
-      '--uuid', authAccount?.uuid || '00000000-0000-0000-0000-000000000000',
-      '--accessToken', authAccount?.accessToken || '0',
-      '--userType', authAccount?.type === 'microsoft' ? 'msa' : 'legacy',
-      '--versionType', 'MinecraftLauncher'
+      ...gameArgs.map(resolveVar)
     ]
+
+    // Ensure required args are always present (override resolved values for consistency)
+    const ensureArg = (flag: string, value: string) => {
+      const idx = args.indexOf(flag)
+      if (idx >= 0 && idx + 1 < args.length) { args[idx + 1] = value }
+      else { args.push(flag, value) }
+    }
+    ensureArg('--username', username)
+    ensureArg('--version', instance.versionId)
+    ensureArg('--gameDir', gameDir)
+    ensureArg('--assetsDir', assetsDir)
+    ensureArg('--assetIndex', versionJson.assetIndex?.id || instance.versionId)
+    ensureArg('--uuid', uuidNoDashes)
+    ensureArg('--accessToken', accessToken)
+    ensureArg('--userType', userType)
+    ensureArg('--versionType', 'MinecraftLauncher')
+    // Ensure --userProperties for legacy versions (pre-1.6)
+    if (!gameArgs.includes('--userProperties') && !args.includes('--userProperties')) {
+      args.push('--userProperties', '{}')
+    }
+    // Ensure --clientId and --xuid for modern versions
+    if (versionJson.arguments?.game) {
+      if (!args.includes('--clientId')) args.push('--clientId', clientId)
+      if (!args.includes('--xuid')) args.push('--xuid', '')
+    }
     // Diagnostic logging
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `Java: ${javaPath}` })
     this.emit('log', { timestamp: new Date().toISOString(), level: 'INFO', source: 'launcher', message: `GameDir: ${instance.gameDir}` })
@@ -268,6 +343,35 @@ export class ProcessManager extends EventEmitter {
       if (rule.features) {
         // features like 'has_custom_resolution' — treat as not matching
         // (we don't set custom resolution features)
+        matches = false
+      }
+      if (matches) {
+        result = rule.action === 'allow'
+      }
+    }
+    return result
+  }
+
+  private evaluateGameRules(rules: any[]): boolean {
+    // Same logic as JVM rules but for game arguments
+    // Default: if first action is 'allow' → false (exclude by default)
+    //          if first action is 'disallow' → true (include by default)
+    let result = rules[0]?.action === 'disallow'
+    for (const rule of rules) {
+      let matches = true
+      if (rule.os) {
+        const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux'
+        if (rule.os.name && rule.os.name !== osName) matches = false
+        if (rule.os.arch) {
+          const archMap: Record<string, string> = { 'x86': 'ia32', 'x86_64': 'x64', 'amd64': 'x64', 'arm64': 'arm64' }
+          const expectedArch = archMap[rule.os.arch] || rule.os.arch
+          if (expectedArch !== process.arch) matches = false
+        }
+        if (rule.os.version && !new RegExp(rule.os.version).test(os.release())) matches = false
+      }
+      if (rule.features) {
+        // Game features like 'is_demo_user', 'has_custom_resolution', etc.
+        // We don't set these features, so they don't match
         matches = false
       }
       if (matches) {
